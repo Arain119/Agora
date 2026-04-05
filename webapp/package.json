@@ -7,7 +7,8 @@
     "preview": "wrangler pages dev dist --ip 0.0.0.0 --port 3000",
     "dev:sandbox": "wrangler pages dev dist --ip 0.0.0.0 --port 3000",
     "deploy": "npm run build && wrangler pages deploy dist",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "test:forwarding": "node scripts/verify-model-forwarding.mjs"
   },
   "dependencies": {
     "hono": "^4.12.10"

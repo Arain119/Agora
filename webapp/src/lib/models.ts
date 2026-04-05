@@ -8,16 +8,10 @@ export interface ModelMeta {
 }
 
 export const NVIDIA_MODELS: ModelMeta[] = [
+  // ===== Google - Gemma 4 series =====
+  { id: 'google/gemma-4-31b-it', owned_by: 'google', type: 'chat', context_length: 128000, description: 'Gemma 4 31B Instruct' },
 
-  // ===== Google - Gemma 3 series =====
-  { id: 'google/gemma-3-1b-it',  owned_by: 'google', type: 'chat', context_length: 32000,  description: 'Gemma 3 1B Instruct - lightweight Google model' },
-  { id: 'google/gemma-3-4b-it',  owned_by: 'google', type: 'chat', context_length: 128000, description: 'Gemma 3 4B Instruct' },
-  { id: 'google/gemma-3-12b-it', owned_by: 'google', type: 'chat', context_length: 128000, description: 'Gemma 3 12B Instruct' },
-  { id: 'google/gemma-3-27b-it', owned_by: 'google', type: 'chat', context_length: 128000, description: 'Gemma 3 27B Instruct - flagship Gemma 3 model' },
-
-  // ===== Qwen - qwen3 / qwen3.5 series (no QwQ) =====
-  { id: 'qwen/qwen3-next-80b-a3b-instruct',    owned_by: 'qwen', type: 'chat',      context_length: 131072, description: 'Qwen3 80B-A3B Instruct' },
-  { id: 'qwen/qwen3-next-80b-a3b-thinking',    owned_by: 'qwen', type: 'reasoning', context_length: 131072, description: 'Qwen3 80B-A3B Thinking - reasoning with CoT' },
+  // ===== Qwen - qwen3.5 series =====
   { id: 'qwen/qwen3-coder-480b-a35b-instruct', owned_by: 'qwen', type: 'code',      context_length: 131072, description: 'Qwen3 Coder 480B - frontier coding model' },
   { id: 'qwen/qwen3.5-122b-a10b',              owned_by: 'qwen', type: 'chat',      context_length: 131072, description: 'Qwen3.5 122B-A10B' },
   { id: 'qwen/qwen3.5-397b-a17b',              owned_by: 'qwen', type: 'chat',      context_length: 131072, description: 'Qwen3.5 397B-A17B - flagship MoE' },

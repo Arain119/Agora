@@ -69,6 +69,10 @@ export interface ChatCompletionRequest {
   stop?: string | string[];
   seed?: number;
   n?: number;
+  thinking?: boolean;
+  enable_thinking?: boolean;
+  clear_thinking?: boolean;
+  chat_template_kwargs?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
