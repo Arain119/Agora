@@ -100,3 +100,29 @@ curl https://BASE_URL/v1/chat/completions \
 - **平台**: Cloudflare Pages / Wrangler Pages Dev
 - **状态**: ✅ 运行中
 - **最后更新**: 2026-04-05
+
+## 模型逐一转发测试
+
+可以使用下面脚本逐一拉取 `/v1/models` 返回的所有模型，并对每个模型执行：
+
+- 非流式请求（`stream: false`）
+- 流式请求（`stream: true`）
+
+脚本会携带常用参数（如 `temperature`、`top_p`、`max_tokens`、`frequency_penalty`、`presence_penalty`、`stop`、`seed`、`user`）并验证请求可被平台正常处理。
+对于带“思考模式”的模型，脚本也会按模型差异注入参数（例如 DeepSeek/Kimi 2.5 使用 `thinking`，Qwen3.5/GLM/Gemma 4 使用 `enable_thinking`，GLM 额外带 `clear_thinking: false`）。
+
+```bash
+cd webapp
+npm run test:forwarding
+```
+
+可选环境变量：
+
+- `BASE_URL`：目标网关地址（默认 README 中示例地址）
+- `API_KEY`：测试用访问令牌（默认 `sk-nvidia-router-default-2024`）
+
+示例：
+
+```bash
+BASE_URL="https://your-domain.example" API_KEY="sk-xxx" npm run test:forwarding
+```

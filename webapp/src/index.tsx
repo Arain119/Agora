@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import adminRoutes from './routes/admin'
 import { getState, getNextAvailableKey, addLog, validateUserToken } from './lib/state'
 import { getModelList, isValidModel } from './lib/models'
+import { adaptChatRequestByModel } from './lib/model-adapter'
 import { shellHTML } from './views/shell'
 import { loginHTML } from './views/login'
 import type { ChatCompletionRequest } from './types'
@@ -92,6 +93,7 @@ app.post('/v1/chat/completions', userAuthMiddleware, async (c) => {
   userToken.totalRequests++
 
   const isStream = body.stream === true
+  const upstreamPayload = adaptChatRequestByModel(body)
 
   try {
     const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
@@ -99,8 +101,9 @@ app.post('/v1/chat/completions', userAuthMiddleware, async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${key.key}`,
+        'Accept': isStream ? 'text/event-stream' : 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(upstreamPayload),
     })
 
     const latency = Date.now() - startTime
