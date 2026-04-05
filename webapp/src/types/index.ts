@@ -1,5 +1,15 @@
 // Types for the API Router Platform
 
+export interface EnvBindings {
+  NVIDIA_API_KEYS?: string;
+  ADMIN_PASSWORD?: string;
+  ADMIN_JWT_SECRET?: string;
+  DEFAULT_USER_TOKEN?: string;
+  DEFAULT_USER_TOKEN_RPM?: string;
+  MAX_RETRY_ATTEMPTS?: string;
+  KEY_COOLDOWN_MS?: string;
+}
+
 export interface NvidiaKey {
   id: string;
   key: string;
@@ -7,6 +17,8 @@ export interface NvidiaKey {
   requestCount: number;
   totalRequests: number;
   failCount: number;
+  consecutiveFailures: number;
+  cooldownUntil: number;
   lastUsed: number;
   lastReset: number;
   enabled: boolean;
@@ -27,22 +39,34 @@ export interface UserToken {
 
 export interface RequestLog {
   id: string;
+  requestId: string;
   timestamp: number;
   model: string;
   keyId: string;
   userToken: string;
   status: number;
   latency: number;
+  attemptCount?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
   error?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: number;
+  actor: string;
+  action: string;
+  target?: string;
+  detail?: string;
 }
 
 export interface AppState {
   keys: NvidiaKey[];
   userTokens: UserToken[];
   logs: RequestLog[];
-  adminPassword: string;
+  auditLogs: AuditLog[];
+  adminPasswordHash: string;
   currentKeyIndex: number;
 }
 

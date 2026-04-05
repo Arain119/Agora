@@ -87,6 +87,20 @@ curl https://BASE_URL/v1/chat/completions \
 
 **总容量**: 200 RPM (5 × 40)
 
+## 运行时配置（NVIDIA 固定 Provider）
+
+> 本项目固定使用 NVIDIA 作为唯一上游 Provider，不支持切换到其他 Provider。
+
+可通过环境变量配置：
+
+- `NVIDIA_API_KEYS`：逗号分隔的 NVIDIA API Key 列表（建议必配）
+- `ADMIN_PASSWORD`：后台初始密码
+- `ADMIN_JWT_SECRET`：后台 JWT 签名密钥
+- `DEFAULT_USER_TOKEN`：默认用户访问 token
+- `DEFAULT_USER_TOKEN_RPM`：默认 token 每分钟限流
+- `MAX_RETRY_ATTEMPTS`：上游 429/5xx 最大重试次数（默认 2）
+- `KEY_COOLDOWN_MS`：Key 连续失败熔断冷却时间毫秒（默认 30000）
+
 ## 技术栈
 
 - **框架**: Hono (TypeScript)
@@ -94,6 +108,11 @@ curl https://BASE_URL/v1/chat/completions \
 - **上游**: NVIDIA NIM API (`https://integrate.api.nvidia.com/v1`)
 - **构建**: Vite + @hono/vite-build
 - **状态**: 内存状态（Worker生命周期内持久化）
+
+
+## 优化路线图
+
+- 基于 `QuantumNous/new-api` 的深度借鉴分析与优化方案：`docs/new-api-optimization-plan.md`
 
 ## 部署状态
 

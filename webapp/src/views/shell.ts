@@ -347,6 +347,12 @@ export function shellHTML(isAdmin: boolean): string {
     <div class="nav-item" onclick="nav('logs',this)">
       <span class="ni"><i class="fas fa-list-alt"></i></span><span>请求日志</span>
     </div>
+    <div class="nav-item" onclick="nav('metrics',this)">
+      <span class="ni"><i class="fas fa-chart-line"></i></span><span>运行指标</span>
+    </div>
+    <div class="nav-item" onclick="nav('audit',this)">
+      <span class="ni"><i class="fas fa-user-shield"></i></span><span>审计日志</span>
+    </div>
     <div class="nav-item" onclick="nav('settings',this)">
       <span class="ni"><i class="fas fa-cog"></i></span><span>系统设置</span>
     </div>
@@ -710,11 +716,46 @@ export function shellHTML(isAdmin: boolean): string {
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>时间</th><th>模型</th><th>渠道</th><th>令牌</th><th>状态</th><th>延迟</th><th>详情</th></tr></thead>
-            <tbody id="logs-tbody"><tr><td colspan="7" class="loading-box"><span class="spin"><i class="fas fa-circle-notch"></i></span></td></tr></tbody>
+            <thead><tr><th>时间</th><th>模型</th><th>渠道</th><th>请求ID</th><th>尝试</th><th>状态</th><th>延迟</th><th>详情</th></tr></thead>
+            <tbody id="logs-tbody"><tr><td colspan="8" class="loading-box"><span class="spin"><i class="fas fa-circle-notch"></i></span></td></tr></tbody>
           </table>
         </div>
         <div style="padding:12px 20px;border-top:1px solid var(--border-light)"><div class="pagination" id="logs-pagination"></div></div>
+      </div>
+    </div>
+
+    <!-- METRICS -->
+    <div class="page" id="page-metrics">
+      <div class="stats-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="stat-icon si-blue"><i class="fas fa-wave-square"></i></div><div><div class="stat-label">5分钟请求数</div><div class="stat-value" id="metrics-request-count">-</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-green"><i class="fas fa-check-circle"></i></div><div><div class="stat-label">5分钟成功率</div><div class="stat-value" id="metrics-success-rate">-</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-orange"><i class="fas fa-stopwatch"></i></div><div><div class="stat-label">P95 延迟</div><div class="stat-value" id="metrics-p95">-</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-purple"><i class="fas fa-history"></i></div><div><div class="stat-label">统计窗口</div><div class="stat-value" id="metrics-window">-</div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Key 健康状态</span><button class="btn btn-default btn-sm" onclick="loadMetrics()"><i class="fas fa-sync-alt"></i> 刷新</button></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Key</th><th>启用</th><th>RPM使用率</th><th>失败率</th><th>连续失败</th><th>冷却至</th></tr></thead>
+            <tbody id="metrics-keys-tbody"><tr><td colspan="6" class="loading-box"><span class="spin"><i class="fas fa-circle-notch"></i></span></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUDIT -->
+    <div class="page" id="page-audit">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">审计日志</span>
+          <div class="card-extra"><button class="btn btn-default btn-sm" onclick="loadAuditLogs()"><i class="fas fa-sync-alt"></i> 刷新</button></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>对象</th><th>详情</th></tr></thead>
+            <tbody id="audit-tbody"><tr><td colspan="5" class="loading-box"><span class="spin"><i class="fas fa-circle-notch"></i></span></td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -727,7 +768,7 @@ export function shellHTML(isAdmin: boolean): string {
           <div class="settings-section">
             <div class="settings-label">安全设置</div>
             <div class="settings-item">
-              <div class="si-info"><div class="si-title">管理员密码</div><div class="si-desc">修改控制台登录密码（至少6位）</div></div>
+              <div class="si-info"><div class="si-title">管理员密码</div><div class="si-desc">修改控制台登录密码（至少8位）</div></div>
               <div style="display:flex;gap:8px">
                 <input type="password" class="form-control" id="new-password" placeholder="新密码" style="width:160px">
                 <button class="btn btn-primary btn-sm" onclick="changePassword()">修改</button>
@@ -799,7 +840,7 @@ ${isAdmin ? `const adminToken = sessionStorage.getItem('adminToken'); if (!admin
 // ─────────────── NAV ───────────────
 const PAGE_TITLES = {
   home:'首页', chat:'对话测试', models:'模型广场', docs:'接入文档', endpoints:'API 端点',
-  overview:'控制台', channels:'渠道管理', tokens:'令牌管理', logs:'请求日志', settings:'系统设置'
+  overview:'控制台', channels:'渠道管理', tokens:'令牌管理', logs:'请求日志', metrics:'运行指标', audit:'审计日志', settings:'系统设置'
 };
 
 function nav(name, el) {
@@ -827,6 +868,8 @@ function nav(name, el) {
     else if (name === 'channels') loadChannels();
     else if (name === 'tokens') loadTokens();
     else if (name === 'logs') loadLogs();
+    else if (name === 'metrics') loadMetrics();
+    else if (name === 'audit') loadAuditLogs();
     else if (name === 'settings') loadSettings();
   }
 }
@@ -1727,12 +1770,12 @@ let allLogs=[], logsPage=1;
 const LOGS_PER_PAGE=20;
 async function loadLogs() {
   const tb = document.getElementById('logs-tbody');
-  tb.innerHTML = '<tr><td colspan="7" class="loading-box"><span class="spin"><i class="fas fa-circle-notch"></i></span></td></tr>';
+  tb.innerHTML = '<tr><td colspan="8" class="loading-box"><span class="spin"><i class="fas fa-circle-notch"></i></span></td></tr>';
   try {
     const r = await apiFetch('/admin/logs?limit=500');
     const d = await r.json();
     allLogs = d.logs||[]; logsPage=1; renderLogs();
-  } catch(e) { tb.innerHTML='<tr><td colspan="7" class="empty-box"><div>加载失败</div></td></tr>'; }
+  } catch(e) { tb.innerHTML='<tr><td colspan="8" class="empty-box"><div>加载失败</div></td></tr>'; }
 }
 function filterLogs() { logsPage=1; renderLogs(); }
 function renderLogs() {
@@ -1743,12 +1786,13 @@ function renderLogs() {
   else if (f==='500') logs=logs.filter(l=>String(l.status).startsWith('5'));
   const total=logs.length, start=(logsPage-1)*LOGS_PER_PAGE, pg=logs.slice(start,start+LOGS_PER_PAGE);
   const tb=document.getElementById('logs-tbody');
-  if (!pg.length) { tb.innerHTML='<tr><td colspan="7"><div class="empty-box"><div class="empty-icon"><i class="fas fa-inbox"></i></div><div>暂无日志</div></div></td></tr>'; }
+  if (!pg.length) { tb.innerHTML='<tr><td colspan="8"><div class="empty-box"><div class="empty-icon"><i class="fas fa-inbox"></i></div><div>暂无日志</div></div></td></tr>'; }
   else tb.innerHTML = pg.map(l=>\`<tr>
     <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">\${fmtTime(l.timestamp)}</td>
     <td><span class="model-pill">\${l.model}</span></td>
     <td><span class="badge bd-info" style="font-size:11px">\${l.keyId}</span></td>
-    <td style="font-size:12px;color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${l.userToken}</td>
+    <td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${l.requestId || '-'}</td>
+    <td style="font-size:12px;color:var(--text-muted)">\${l.attemptCount || 1}</td>
     <td>\${statusBadge(l.status)}</td>
     <td style="font-size:12px;color:var(--text-muted)">\${l.latency}ms</td>
     <td \${l.error?\`title="\${l.error.substring(0,100)}"\`:''}>
@@ -1767,13 +1811,62 @@ function renderLogs() {
 }
 function goPage(p) { logsPage=p; renderLogs(); }
 
+// ─────────────── ADMIN: METRICS ───────────────
+async function loadMetrics() {
+  const tbody = document.getElementById('metrics-keys-tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="loading-box"><span class="spin"><i class="fas fa-circle-notch"></i></span></td></tr>';
+  try {
+    const r = await apiFetch('/admin/metrics');
+    const d = await r.json();
+    document.getElementById('metrics-request-count').textContent = String(d.requestCount ?? '-');
+    document.getElementById('metrics-success-rate').textContent = (d.successRate ?? '-') + '%';
+    document.getElementById('metrics-p95').textContent = (d.p95Latency ?? '-') + 'ms';
+    document.getElementById('metrics-window').textContent = String(d.windowMinutes ?? '-') + ' 分钟';
+
+    const keyRows = (d.keyHealth || []).map(k => '<tr>' +
+      '<td><span class="badge bd-info">' + (k.keyId || '-') + '</span></td>' +
+      '<td>' + (k.enabled ? '<span class="badge bd-success">启用</span>' : '<span class="badge bd-danger">停用</span>') + '</td>' +
+      '<td style="font-size:12px">' + Math.round((k.rpmUsage || 0) * 100) + '%</td>' +
+      '<td style="font-size:12px">' + (Math.round((k.failRate || 0) * 10000) / 100) + '%</td>' +
+      '<td style="font-size:12px">' + (k.consecutiveFailures || 0) + '</td>' +
+      '<td style="font-size:12px;color:var(--text-muted)">' + ((k.cooldownUntil && k.cooldownUntil > Date.now()) ? fmtTime(k.cooldownUntil) : '-') + '</td>' +
+    '</tr>').join('');
+
+    if (tbody) tbody.innerHTML = keyRows || '<tr><td colspan="6"><div class="empty-box"><div>暂无 Key 指标</div></div></td></tr>';
+  } catch (e) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="empty-box"><div>加载失败</div></td></tr>';
+  }
+}
+
+// ─────────────── ADMIN: AUDIT ───────────────
+async function loadAuditLogs() {
+  const tb = document.getElementById('audit-tbody');
+  if (!tb) return;
+  tb.innerHTML = '<tr><td colspan="5" class="loading-box"><span class="spin"><i class="fas fa-circle-notch"></i></span></td></tr>';
+  try {
+    const r = await apiFetch('/admin/audit-logs?limit=200');
+    const d = await r.json();
+    const rows = (d.logs || []).map(l => '<tr>' +
+      '<td style="font-size:12px;color:var(--text-muted)">' + fmtTime(l.timestamp) + '</td>' +
+      '<td>' + (l.actor || '-') + '</td>' +
+      '<td><span class="badge bd-purple">' + (l.action || '-') + '</span></td>' +
+      '<td style="font-size:12px;color:var(--text-muted)">' + (l.target || '-') + '</td>' +
+      '<td style="font-size:12px;color:var(--text-muted)">' + (l.detail || '-') + '</td>' +
+    '</tr>').join('');
+    tb.innerHTML = rows || '<tr><td colspan="5"><div class="empty-box"><div class="empty-icon"><i class="fas fa-inbox"></i></div><div>暂无审计日志</div></div></td></tr>';
+  } catch (e) {
+    tb.innerHTML = '<tr><td colspan="5" class="empty-box"><div>加载失败</div></td></tr>';
+  }
+}
+
+
 // ─────────────── ADMIN: SETTINGS ───────────────
 async function loadSettings() {
   try { const r=await fetch('/v1/models'); const d=await r.json(); const el=document.getElementById('settings-model-count'); if(el) el.textContent=(d.data?.length||0)+' 个'; } catch(e){}
 }
 async function changePassword() {
   const pwd=document.getElementById('new-password').value.trim();
-  if (!pwd||pwd.length<6) { toast('密码至少6位','error'); return; }
+  if (!pwd||pwd.length<8) { toast('密码至少8位','error'); return; }
   const r=await apiFetch('/admin/password',{method:'POST',body:JSON.stringify({password:pwd})});
   const d=await r.json();
   if (r.ok) { toast('密码修改成功，即将退出'); setTimeout(logout,1500); }
