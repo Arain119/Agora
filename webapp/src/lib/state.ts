@@ -1,53 +1,75 @@
 // In-memory state management for the API Router Platform
 // Since Cloudflare Workers have isolated instances, we use global state within a session
 
-import type { AppState, NvidiaKey, UserToken, RequestLog } from '../types'
+import type { AppState, NvidiaKey, UserToken, RequestLog, AuditLog, EnvBindings } from '../types'
+import { sha256Hex } from './auth'
 
-// Default NVIDIA API Keys
-const DEFAULT_KEYS: Omit<NvidiaKey, 'requestCount' | 'lastReset' | 'lastUsed' | 'failCount' | 'totalRequests'>[] = [
-  { id: 'key1', key: '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', rpm: 40, enabled: true, label: 'Key-1' },
-  { id: 'key2', key: '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', rpm: 40, enabled: true, label: 'Key-2' },
-  { id: 'key3', key: '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', rpm: 40, enabled: true, label: 'Key-3' },
-  { id: 'key4', key: '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', rpm: 40, enabled: true, label: 'Key-4' },
-  { id: 'key5', key: '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', rpm: 40, enabled: true, label: 'Key-5' },
-]
+function parseNvidiaKeys(env?: EnvBindings): string[] {
+  const raw = env?.NVIDIA_API_KEYS?.trim()
+  if (!raw) return []
+  return raw.split(',').map((item) => item.trim()).filter(Boolean)
+}
 
-// Default admin token for accessing this API
-const DEFAULT_USER_TOKENS: Omit<UserToken, 'requestCount' | 'lastReset' | 'totalRequests'>[] = [
-  { id: 'default', token: 'sk-nvidia-router-default-2024', name: 'Default Token', enabled: true, rpmLimit: 200, createdAt: Date.now() },
-]
-
-function createInitialState(): AppState {
+async function createInitialState(env?: EnvBindings): Promise<AppState> {
   const now = Date.now()
+  const configuredKeys = parseNvidiaKeys(env)
+
+  const keys: NvidiaKey[] = configuredKeys.map((key, idx) => ({
+    id: `key${idx + 1}`,
+    key,
+    rpm: 40,
+    enabled: true,
+    label: `Key-${idx + 1}`,
+    requestCount: 0,
+    totalRequests: 0,
+    failCount: 0,
+    consecutiveFailures: 0,
+    cooldownUntil: 0,
+    lastUsed: 0,
+    lastReset: now,
+  }))
+
+  const defaultToken = env?.DEFAULT_USER_TOKEN?.trim() || 'sk-nvidia-router-default'
+  const defaultTokenRPM = Math.max(1, Number.parseInt(env?.DEFAULT_USER_TOKEN_RPM || '200', 10) || 200)
+  const userTokens: UserToken[] = [{
+    id: 'default',
+    token: defaultToken,
+    name: 'Default Token',
+    enabled: true,
+    rpmLimit: defaultTokenRPM,
+    requestCount: 0,
+    totalRequests: 0,
+    lastReset: now,
+    createdAt: now,
+  }]
+
+  const adminPassword = env?.ADMIN_PASSWORD?.trim() || 'admin123456'
+
   return {
-    keys: DEFAULT_KEYS.map(k => ({
-      ...k,
-      requestCount: 0,
-      totalRequests: 0,
-      failCount: 0,
-      lastUsed: 0,
-      lastReset: now,
-    })),
-    userTokens: DEFAULT_USER_TOKENS.map(t => ({
-      ...t,
-      requestCount: 0,
-      totalRequests: 0,
-      lastReset: now,
-    })),
+    keys,
+    userTokens,
     logs: [],
-    adminPassword: 'admin123456',
+    auditLogs: [],
+    adminPasswordHash: await sha256Hex(adminPassword),
     currentKeyIndex: 0,
   }
 }
 
 // Global state - in Cloudflare Workers this lives for the duration of the isolate
 let _state: AppState | null = null
+let _stateInitPromise: Promise<AppState> | null = null
 
-export function getState(): AppState {
-  if (!_state) {
-    _state = createInitialState()
+export async function getState(env?: EnvBindings): Promise<AppState> {
+  if (_state) return _state
+
+  if (!_stateInitPromise) {
+    _stateInitPromise = createInitialState(env).then((state) => {
+      _state = state
+      return state
+    })
   }
-  return _state
+
+  return _stateInitPromise
 }
 
 // Reset per-minute counters
@@ -55,7 +77,6 @@ export function resetCountersIfNeeded(state: AppState): void {
   const now = Date.now()
   const oneMinute = 60 * 1000
 
-  // Reset key counters
   for (const key of state.keys) {
     if (now - key.lastReset >= oneMinute) {
       key.requestCount = 0
@@ -63,7 +84,6 @@ export function resetCountersIfNeeded(state: AppState): void {
     }
   }
 
-  // Reset user token counters
   for (const token of state.userTokens) {
     if (now - token.lastReset >= oneMinute) {
       token.requestCount = 0
@@ -72,22 +92,47 @@ export function resetCountersIfNeeded(state: AppState): void {
   }
 }
 
-// Get next available key using round-robin with rate limiting
+function keyLatencyPenalty(state: AppState, keyId: string): number {
+  const recent = state.logs.filter((l) => l.keyId === keyId).slice(0, 30)
+  if (recent.length === 0) return 0
+  const avgLatency = recent.reduce((sum, row) => sum + row.latency, 0) / recent.length
+  return Math.min(1, avgLatency / 4000)
+}
+
+export function markKeyFailure(key: NvidiaKey, cooldownMs: number): void {
+  key.failCount += 1
+  key.consecutiveFailures += 1
+  if (key.consecutiveFailures >= 3) {
+    key.cooldownUntil = Date.now() + cooldownMs
+  }
+}
+
+export function markKeySuccess(key: NvidiaKey): void {
+  key.consecutiveFailures = 0
+  key.cooldownUntil = 0
+}
+
+// Get next available key using weighted health score
 export function getNextAvailableKey(state: AppState): NvidiaKey | null {
   resetCountersIfNeeded(state)
-  
-  const enabledKeys = state.keys.filter(k => k.enabled)
+  const now = Date.now()
+
+  const enabledKeys = state.keys.filter((k) => k.enabled)
   if (enabledKeys.length === 0) return null
 
-  // Find key with lowest usage ratio that hasn't hit rate limit
   let bestKey: NvidiaKey | null = null
-  let bestScore = Infinity
+  let bestScore = Number.POSITIVE_INFINITY
 
   for (const key of enabledKeys) {
-    if (key.requestCount >= key.rpm) continue // Skip rate-limited keys
-    
-    // Score: lower is better (prefer less used keys)
-    const score = key.requestCount / key.rpm
+    if (key.requestCount >= key.rpm) continue
+    if (key.cooldownUntil > now) continue
+
+    const usage = key.requestCount / Math.max(1, key.rpm)
+    const failRate = key.totalRequests > 0 ? key.failCount / key.totalRequests : 0
+    const latencyPenalty = keyLatencyPenalty(state, key.id)
+    const cooldownPenalty = key.consecutiveFailures >= 2 ? 0.5 : 0
+
+    const score = usage * 0.55 + failRate * 0.3 + latencyPenalty * 0.1 + cooldownPenalty * 0.05
     if (score < bestScore) {
       bestScore = score
       bestKey = key
@@ -104,9 +149,20 @@ export function addLog(state: AppState, log: Omit<RequestLog, 'id'>): void {
     id: Math.random().toString(36).substring(2, 11),
   }
   state.logs.unshift(entry)
-  // Keep only last 500 logs
-  if (state.logs.length > 500) {
-    state.logs = state.logs.slice(0, 500)
+  if (state.logs.length > 2000) {
+    state.logs = state.logs.slice(0, 2000)
+  }
+}
+
+export function addAuditLog(state: AppState, log: Omit<AuditLog, 'id' | 'timestamp'>): void {
+  const entry: AuditLog = {
+    ...log,
+    id: Math.random().toString(36).substring(2, 11),
+    timestamp: Date.now(),
+  }
+  state.auditLogs.unshift(entry)
+  if (state.auditLogs.length > 1000) {
+    state.auditLogs = state.auditLogs.slice(0, 1000)
   }
 }
 
@@ -114,32 +170,64 @@ export function addLog(state: AppState, log: Omit<RequestLog, 'id'>): void {
 export function validateUserToken(state: AppState, token: string): UserToken | null {
   resetCountersIfNeeded(state)
   const bearerToken = token.replace('Bearer ', '').trim()
-  const userToken = state.userTokens.find(t => t.token === bearerToken && t.enabled)
+  const userToken = state.userTokens.find((t) => t.token === bearerToken && t.enabled)
   if (!userToken) return null
-  
-  // Check rate limit
   if (userToken.requestCount >= userToken.rpmLimit) return null
-  
   return userToken
+}
+
+export async function verifyAdminPassword(state: AppState, password: string): Promise<boolean> {
+  return (await sha256Hex(password)) === state.adminPasswordHash
+}
+
+export async function updateAdminPassword(state: AppState, password: string): Promise<void> {
+  state.adminPasswordHash = await sha256Hex(password)
 }
 
 // Get stats
 export function getStats(state: AppState) {
   const now = Date.now()
   const oneHour = 60 * 60 * 1000
-  const recentLogs = state.logs.filter(l => now - l.timestamp < oneHour)
-  
+  const recentLogs = state.logs.filter((l) => now - l.timestamp < oneHour)
+
   return {
     totalRequests: state.logs.length,
     requestsLastHour: recentLogs.length,
-    successRate: recentLogs.length > 0 
-      ? (recentLogs.filter(l => l.status === 200).length / recentLogs.length * 100).toFixed(1)
+    successRate: recentLogs.length > 0
+      ? (recentLogs.filter((l) => l.status >= 200 && l.status < 300).length / recentLogs.length * 100).toFixed(1)
       : '100.0',
     avgLatency: recentLogs.length > 0
       ? Math.round(recentLogs.reduce((a, b) => a + b.latency, 0) / recentLogs.length)
       : 0,
-    activeKeys: state.keys.filter(k => k.enabled).length,
+    activeKeys: state.keys.filter((k) => k.enabled).length,
     totalKeys: state.keys.length,
-    activeTokens: state.userTokens.filter(t => t.enabled).length,
+    activeTokens: state.userTokens.filter((t) => t.enabled).length,
+  }
+}
+
+export function getMetrics(state: AppState) {
+  const now = Date.now()
+  const fiveMinutes = 5 * 60 * 1000
+  const recent = state.logs.filter((l) => now - l.timestamp <= fiveMinutes)
+  const success = recent.filter((l) => l.status >= 200 && l.status < 300).length
+  const p95 = (() => {
+    if (recent.length === 0) return 0
+    const sorted = recent.map((r) => r.latency).sort((a, b) => a - b)
+    return sorted[Math.max(0, Math.floor(sorted.length * 0.95) - 1)]
+  })()
+
+  return {
+    windowMinutes: 5,
+    requestCount: recent.length,
+    successRate: recent.length ? Number(((success / recent.length) * 100).toFixed(2)) : 100,
+    p95Latency: p95,
+    keyHealth: state.keys.map((k) => ({
+      keyId: k.id,
+      enabled: k.enabled,
+      cooldownUntil: k.cooldownUntil,
+      failRate: k.totalRequests > 0 ? Number((k.failCount / k.totalRequests).toFixed(4)) : 0,
+      rpmUsage: Number((k.requestCount / Math.max(1, k.rpm)).toFixed(4)),
+      consecutiveFailures: k.consecutiveFailures,
+    })),
   }
 }
