@@ -1,0 +1,60 @@
+{
+  "users": [
+    {
+      "id": "usr_admin",
+      "username": "admin",
+      "passwordHash": "$2a$10$ReIKKsa3V02IzHHnbQNiPOUNGr6idrNB6UkZgIF5vEWu1huoOETYm",
+      "role": "ADMIN",
+      "createdAt": "2026-04-06T07:42:46.502Z"
+    }
+  ],
+  "userTokens": [],
+  "upstreamKeys": [
+    {
+      "id": "upk_1",
+      "key": "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",
+      "name": "NVIDIA Initial Key 1",
+      "isActive": true,
+      "errorCount": 0,
+      "lastUsedAt": null,
+      "createdAt": "2026-04-06T07:42:46.503Z"
+    },
+    {
+      "id": "upk_2",
+      "key": "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",
+      "name": "NVIDIA Initial Key 2",
+      "isActive": true,
+      "errorCount": 0,
+      "lastUsedAt": null,
+      "createdAt": "2026-04-06T07:42:46.503Z"
+    },
+    {
+      "id": "upk_3",
+      "key": "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",
+      "name": "NVIDIA Initial Key 3",
+      "isActive": true,
+      "errorCount": 0,
+      "lastUsedAt": null,
+      "createdAt": "2026-04-06T07:42:46.504Z"
+    },
+    {
+      "id": "upk_4",
+      "key": "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",
+      "name": "NVIDIA Initial Key 4",
+      "isActive": true,
+      "errorCount": 0,
+      "lastUsedAt": null,
+      "createdAt": "2026-04-06T07:42:46.504Z"
+    },
+    {
+      "id": "upk_5",
+      "key": "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",
+      "name": "NVIDIA Initial Key 5",
+      "isActive": true,
+      "errorCount": 0,
+      "lastUsedAt": null,
+      "createdAt": "2026-04-06T07:42:46.505Z"
+    }
+  ],
+  "requestLogs": []
+}
