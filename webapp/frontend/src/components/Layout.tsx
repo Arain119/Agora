@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LogOut, Key, BarChart3, Database, Users, Box, Cpu, Menu, X } from 'lucide-react';
+import { LogOut, Key, BarChart3, Database, Users, Box, Cpu, Menu, X, Users2 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 
@@ -18,6 +18,7 @@ export const Layout = () => {
     { name: 'API Tokens', path: '/tokens', icon: Key },
     { name: 'Models', path: '/models', icon: Box },
     { name: 'Request Logs', path: '/logs', icon: Database },
+    { name: 'Community', path: '/community', icon: Users2 },
   ];
 
   if (user.role === 'ADMIN') {

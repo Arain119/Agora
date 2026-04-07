@@ -43,11 +43,22 @@ export interface RequestLog {
   createdAt: string;
 }
 
+export interface CommunityPost {
+  id: string;
+  authorId: string;
+  authorName: string;
+  type: string;
+  content: string;
+  likes: number;
+  createdAt: string;
+}
+
 export interface Schema {
   users: User[];
   userTokens: UserToken[];
   upstreamKeys: UpstreamKey[];
   requestLogs: RequestLog[];
+  community_posts: CommunityPost[];
 }
 
 const adapter = new FileSync<Schema>(path.join(__dirname, '../../db.json'));
@@ -58,7 +69,8 @@ export async function initDb() {
     users: [],
     userTokens: [],
     upstreamKeys: [],
-    requestLogs: []
+    requestLogs: [],
+    community_posts: []
   }).write();
 
   // Create default admin if no users exist

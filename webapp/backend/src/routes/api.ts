@@ -78,6 +78,57 @@ router.get('/logs', (req, res) => {
   res.json(logs);
 });
 
+// Analytics Dashboard Endpoint
+router.get('/analytics', (req, res) => {
+  const userId = (req as any).user.userId;
+  const logs = db.get('requestLogs').filter({ userId }).value();
+
+  const days = Array.from({length: 7}, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return d.toISOString().split('T')[0];
+  }).reverse();
+
+  const groupedData = days.map(day => {
+      const dayLogs = logs.filter((l: any) => l.createdAt && l.createdAt.startsWith(day));
+      return {
+          date: day,
+          requests: dayLogs.length,
+          latency: Math.round(dayLogs.reduce((acc: number, l: any) => acc + (l.durationMs || 0), 0) / (dayLogs.length || 1)),
+          tokens: dayLogs.reduce((acc: number, l: any) => acc + (l.totalTokens || 0), 0)
+      };
+  });
+
+  res.json(groupedData);
+});
+
+// Community Endpoints
+router.get('/community/posts', (req, res) => {
+  const posts = db.get('community_posts').orderBy(['createdAt'], ['desc']).take(50).value();
+  res.json(posts);
+});
+
+router.post('/community/posts', (req, res) => {
+  const { type, content } = req.body;
+  if (!content) return res.status(400).json({ error: 'Content is required' });
+
+  const userId = (req as any).user.userId;
+  const user = db.get('users').find({ id: userId }).value();
+
+  const newPost = {
+      id: 'post_' + crypto.randomBytes(8).toString('hex'),
+      authorId: userId,
+      authorName: user?.username || 'Unknown',
+      type: type || 'prompt',
+      content,
+      likes: 0,
+      createdAt: new Date().toISOString()
+  };
+
+  db.get('community_posts').push(newPost).write();
+  res.json(newPost);
+});
+
 // Models (NVIDIA models hardcoded or fetched, just return a static list for now)
 router.get('/models', (req, res) => {
   res.json({

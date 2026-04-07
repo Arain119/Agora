@@ -1,17 +1,21 @@
 import { useState, useEffect } from "react";
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { Card } from "../components/ui/Card";
 
 export const Dashboard = () => {
   const { user } = useAuth();
   const [stats, setStats] = useState({ tokenCount: 0, logCount: 0, totalTokensUsed: 0 });
+  const [chartData, setChartData] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [tokens, logs] = await Promise.all([
+        const [tokens, logs, analytics] = await Promise.all([
           api.get('/tokens'),
-          api.get('/logs')
+          api.get('/logs'),
+          api.get('/analytics').catch(() => ({ data: [] }))
         ]);
 
         const totalUsed = logs.data.reduce((acc: number, log: any) => acc + (log.totalTokens || 0), 0);
@@ -21,8 +25,31 @@ export const Dashboard = () => {
           logCount: logs.data.length,
           totalTokensUsed: totalUsed
         });
+
+        if (analytics.data && analytics.data.length > 0) {
+            setChartData(analytics.data);
+        } else {
+             // Fallback to logs if analytics endpoint fails
+             const days = Array.from({length: 7}, (_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                return d.toISOString().split('T')[0];
+            }).reverse();
+
+            const groupedData = days.map(day => {
+                const dayLogs = logs.data.filter((l: any) => l.timestamp.startsWith(day));
+                return {
+                    date: day,
+                    requests: dayLogs.length,
+                    latency: dayLogs.reduce((acc: number, l: any) => acc + (l.durationMs || 0), 0) / (dayLogs.length || 1),
+                    tokens: dayLogs.reduce((acc: number, l: any) => acc + (l.totalTokens || 0), 0)
+                };
+            });
+            setChartData(groupedData);
+        }
+
       } catch (e) {
-        console.error("Failed to fetch stats");
+        console.error("Failed to fetch stats", e);
       }
     };
     fetchStats();
@@ -55,6 +82,50 @@ export const Dashboard = () => {
           <h3 className="font-bold uppercase text-sm md:text-base mb-4 bg-bg-secondary inline-block px-3 py-1 rounded-full border-2 border-text-primary">Tokens Consumed</h3>
           <p className="text-5xl md:text-6xl font-display font-black relative z-10 truncate" title={stats.totalTokensUsed.toLocaleString()}>{stats.totalTokensUsed.toLocaleString()}</p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <Card className="p-6 md:p-8" variant="accent">
+            <h3 className="text-xl font-display font-bold uppercase mb-6 flex items-center gap-2">
+                <span className="w-3 h-3 bg-text-primary rounded-full"></span>
+                Request Trends (7 Days)
+            </h3>
+            <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1A1A1A" opacity={0.2} vertical={false} />
+                        <XAxis dataKey="date" tickFormatter={(val) => val.split('-').slice(1).join('/')} stroke="#1A1A1A" axisLine={{ strokeWidth: 2 }} tickLine={{ strokeWidth: 2 }} />
+                        <YAxis stroke="#1A1A1A" axisLine={{ strokeWidth: 2 }} tickLine={{ strokeWidth: 2 }} />
+                        <Tooltip
+                            contentStyle={{ backgroundColor: '#FFD45E', border: '3px solid #1A1A1A', borderRadius: '0', boxShadow: '4px 4px 0px 0px #1A1A1A', fontWeight: 'bold' }}
+                            itemStyle={{ color: '#1A1A1A' }}
+                        />
+                        <Bar dataKey="requests" fill="#1A1A1A" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card className="p-6 md:p-8">
+            <h3 className="text-xl font-display font-bold uppercase mb-6 flex items-center gap-2">
+                <span className="w-3 h-3 bg-brand rounded-full"></span>
+                Avg Latency (ms)
+            </h3>
+            <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1A1A1A" opacity={0.2} vertical={false} />
+                        <XAxis dataKey="date" tickFormatter={(val) => val.split('-').slice(1).join('/')} stroke="#1A1A1A" axisLine={{ strokeWidth: 2 }} tickLine={{ strokeWidth: 2 }} />
+                        <YAxis stroke="#1A1A1A" axisLine={{ strokeWidth: 2 }} tickLine={{ strokeWidth: 2 }} />
+                        <Tooltip
+                            contentStyle={{ backgroundColor: '#F8F9FA', border: '3px solid #1A1A1A', borderRadius: '0', boxShadow: '4px 4px 0px 0px #1A1A1A', fontWeight: 'bold' }}
+                            itemStyle={{ color: '#1A1A1A' }}
+                        />
+                        <Line type="monotone" dataKey="latency" stroke="#FF004D" strokeWidth={4} dot={{ strokeWidth: 3, r: 6, fill: '#FFD45E' }} activeDot={{ r: 8, strokeWidth: 0 }} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+          </Card>
       </div>
 
       <div className="mt-12 bg-surface rounded-geometric-lg border-4 border-text-primary p-6 md:p-10 shadow-solid">

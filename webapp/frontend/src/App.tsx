@@ -1,5 +1,3 @@
-
-
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 import { Layout } from './components/Layout';
@@ -11,6 +9,7 @@ import { Logs } from './pages/Logs';
 import { Upstreams } from './pages/admin/Upstreams';
 import { AdminLogs } from './pages/admin/AdminLogs';
 import { Users } from './pages/admin/Users';
+import { Community } from './pages/Community';
 
 function App() {
   return (
@@ -23,6 +22,7 @@ function App() {
             <Route path="tokens" element={<Tokens />} />
             <Route path="models" element={<Models />} />
             <Route path="logs" element={<Logs />} />
+            <Route path="community" element={<Community />} />
 
             {/* Admin Routes */}
             <Route path="admin/upstreams" element={<Upstreams />} />
