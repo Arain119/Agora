@@ -1,24 +1,24 @@
-# prod
-dist/
-
-# dev
-.yarn/
-!.yarn/releases
-.vscode/*
-!.vscode/launch.json
-!.vscode/*.code-snippets
-.idea/workspace.xml
-.idea/usage.statistics.xml
-.idea/shelf
-
 # deps
 node_modules/
+**/node_modules/
+
+# build
+dist/
+backend/dist/
+frontend/dist/
+
+# local data / secrets
+data/
+.deploy/
+db.json
+db.json.bak*
+.dev.vars
 .wrangler
 
 # env
 .env
+.env.*
 .env.production
-.dev.vars
 
 # logs
 logs/
@@ -28,6 +28,15 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+npm_err.log
 
 # misc
 .DS_Store
+.vscode/*
+!.vscode/launch.json
+!.vscode/*.code-snippets
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/shelf
+.yarn/
+!.yarn/releases

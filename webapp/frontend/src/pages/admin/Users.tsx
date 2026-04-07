@@ -31,7 +31,7 @@ export const Users = () => {
                 <p className="font-mono text-[10px] text-text-secondary mt-1 bg-bg-secondary px-2 py-0.5 rounded inline-block">{u.id}</p>
               </div>
             </div>
-
+            
             <div className="mt-8 pt-6 border-t-4 border-text-primary/10 flex justify-between items-center">
               <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase border-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
                 u.role === 'ADMIN' ? 'bg-brand text-white border-brand' : 'bg-gray-200 text-gray-700 border-gray-400'

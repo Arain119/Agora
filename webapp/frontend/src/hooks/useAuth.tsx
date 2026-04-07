@@ -49,14 +49,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem('agora_token', token);
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     setUser(user);
-    window.location.href = '/';
   };
 
   const logout = () => {
     localStorage.removeItem('agora_token');
     delete api.defaults.headers.common['Authorization'];
     setUser(null);
-    window.location.href = '/login';
   };
 
   if (loading) {

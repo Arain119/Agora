@@ -13,9 +13,9 @@ export const Dashboard = () => {
           api.get('/tokens'),
           api.get('/logs')
         ]);
-
+        
         const totalUsed = logs.data.reduce((acc: number, log: any) => acc + (log.totalTokens || 0), 0);
-
+        
         setStats({
           tokenCount: tokens.data.length,
           logCount: logs.data.length,
@@ -43,13 +43,13 @@ export const Dashboard = () => {
           <h3 className="font-bold uppercase text-sm md:text-base mb-4 bg-white/40 inline-block px-3 py-1 rounded-full border-2 border-text-primary">Active API Keys</h3>
           <p className="text-5xl md:text-6xl font-display font-black relative z-10">{stats.tokenCount}</p>
         </div>
-
+        
         <div className="bg-brand text-white rounded-geometric-lg border-4 border-text-primary p-6 md:p-8 shadow-solid relative overflow-hidden group">
           <div className="absolute -right-8 -top-8 w-32 h-32 bg-black rounded-full mix-blend-overlay opacity-20 group-hover:scale-150 transition-transform duration-700 ease-out"></div>
           <h3 className="font-bold uppercase text-sm md:text-base mb-4 bg-black/20 inline-block px-3 py-1 rounded-full border-2 border-white">Total Requests</h3>
           <p className="text-5xl md:text-6xl font-display font-black relative z-10">{stats.logCount}</p>
         </div>
-
+        
         <div className="bg-surface rounded-geometric-lg border-4 border-text-primary p-6 md:p-8 shadow-solid relative overflow-hidden group">
           <div className="absolute -right-8 -top-8 w-32 h-32 bg-brand rounded-full mix-blend-multiply opacity-20 group-hover:scale-150 transition-transform duration-700 ease-out"></div>
           <h3 className="font-bold uppercase text-sm md:text-base mb-4 bg-bg-secondary inline-block px-3 py-1 rounded-full border-2 border-text-primary">Tokens Consumed</h3>

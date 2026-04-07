@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { api } from '../lib/api';
 import { format } from 'date-fns';
-import { Copy, Plus, Trash2 } from 'lucide-react';
+import { Copy, Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 
 export const Tokens = () => {
   const [tokens, setTokens] = useState<any[]>([]);
   const [name, setName] = useState('');
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const fetchTokens = async () => {
     const res = await api.get('/tokens');
@@ -36,6 +38,32 @@ export const Tokens = () => {
     alert('Copied to clipboard');
   };
 
+  const fetchTokenSecret = async (id: string) => {
+    if (revealed[id]) return revealed[id];
+    setBusyId(id);
+    try {
+      const res = await api.get(`/tokens/${id}/reveal`);
+      const token = res.data?.token as string;
+      setRevealed((prev) => ({ ...prev, [id]: token }));
+      return token;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const toggleReveal = async (id: string) => {
+    if (revealed[id]) {
+      setRevealed((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      return;
+    }
+
+    await fetchTokenSecret(id);
+  };
+
   return (
     <div className="space-y-8 md:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header className="border-b-4 border-text-primary pb-6">
@@ -54,7 +82,7 @@ export const Tokens = () => {
               className="w-full border-2 border-text-primary p-4 rounded-geometric bg-bg-primary focus:outline-none focus:ring-4 focus:ring-brand-accent/50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
             />
           </div>
-          <button
+          <button 
             type="submit"
             className="w-full md:w-auto bg-brand text-white font-bold uppercase px-8 py-4 rounded-geometric border-2 border-text-primary hover:bg-text-primary transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none flex items-center justify-center gap-2"
           >
@@ -72,10 +100,25 @@ export const Tokens = () => {
                 {token.name}
               </h3>
               <div className="font-mono text-xs md:text-sm bg-bg-primary p-3 rounded-geometric border-2 border-text-primary mt-4 flex items-center justify-between gap-4">
-                <span className="truncate">{token.token.substring(0, 12)}...{token.token.substring(token.token.length - 4)}</span>
-                <button onClick={() => copyToClipboard(token.token)} className="hover:text-brand transition-colors p-2 bg-white rounded-md border-2 border-text-primary shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[2px] active:translate-x-[2px]">
-                  <Copy size={16} />
-                </button>
+                <span className="truncate">{revealed[token.id] ? revealed[token.id] : token.tokenPreview || '********'}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleReveal(token.id)}
+                    disabled={busyId === token.id}
+                    className="hover:text-brand transition-colors p-2 bg-white rounded-md border-2 border-text-primary shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[2px] active:translate-x-[2px] disabled:opacity-50"
+                    title={revealed[token.id] ? 'Hide' : 'Reveal'}
+                  >
+                    {revealed[token.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                  <button
+                    onClick={async () => copyToClipboard(await fetchTokenSecret(token.id))}
+                    disabled={busyId === token.id}
+                    className="hover:text-brand transition-colors p-2 bg-white rounded-md border-2 border-text-primary shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[2px] active:translate-x-[2px] disabled:opacity-50"
+                    title="Copy"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
               </div>
             </div>
             <div className="flex w-full md:w-auto items-center justify-between md:justify-end gap-6 border-t-2 border-text-primary/10 pt-4 md:border-0 md:pt-0">
@@ -83,7 +126,7 @@ export const Tokens = () => {
                 <p className="text-xs font-bold uppercase text-text-secondary bg-bg-primary inline-block px-2 py-1 rounded-full mb-1">Created</p>
                 <p className="font-bold">{format(new Date(token.createdAt), 'MMM dd, yyyy')}</p>
               </div>
-              <button
+              <button 
                 onClick={() => handleDelete(token.id)}
                 className="p-3 bg-red-100 rounded-full text-red-600 border-2 border-red-600 hover:bg-red-600 hover:text-white transition-colors shadow-[4px_4px_0px_0px_rgba(220,38,38,1)] active:shadow-none active:translate-y-[4px] active:translate-x-[4px]"
               >

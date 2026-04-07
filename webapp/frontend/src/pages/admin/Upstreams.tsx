@@ -1,16 +1,20 @@
 import { useState, useEffect } from "react";
 import { api } from '../../lib/api';
 import { format } from 'date-fns';
-import { Power, PowerOff, Trash2, Plus } from 'lucide-react';
+import { Copy, Eye, EyeOff, KeyRound, Power, PowerOff, RefreshCw, Trash2, Plus } from 'lucide-react';
 
 export const Upstreams = () => {
   const [upstreams, setUpstreams] = useState<any[]>([]);
   const [newKey, setNewKey] = useState('');
   const [newName, setNewName] = useState('');
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [weightDraft, setWeightDraft] = useState<Record<string, string>>({});
 
   const fetchUpstreams = async () => {
     const res = await api.get('/admin/upstreams');
     setUpstreams(res.data);
+    setWeightDraft(Object.fromEntries((res.data || []).map((u: any) => [u.id, String(u.weight ?? 1)])));
   };
 
   useEffect(() => {
@@ -28,6 +32,61 @@ export const Upstreams = () => {
 
   const toggleStatus = async (id: string, currentStatus: boolean) => {
     await api.patch(`/admin/upstreams/${id}`, { isActive: !currentStatus });
+    fetchUpstreams();
+  };
+
+  const fetchUpstreamSecret = async (id: string) => {
+    if (revealed[id]) return revealed[id];
+    setBusyId(id);
+    try {
+      const res = await api.get(`/admin/upstreams/${id}/reveal`);
+      const key = res.data?.key as string;
+      setRevealed((prev) => ({ ...prev, [id]: key }));
+      return key;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const toggleReveal = async (id: string) => {
+    if (revealed[id]) {
+      setRevealed((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      return;
+    }
+
+    await fetchUpstreamSecret(id);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+    alert('Copied');
+  };
+
+  const saveWeight = async (id: string) => {
+    const raw = Number(weightDraft[id]);
+    if (!Number.isFinite(raw)) return;
+    await api.patch(`/admin/upstreams/${id}`, { weight: raw });
+    fetchUpstreams();
+  };
+
+  const resetHealth = async (id: string) => {
+    await api.post(`/admin/upstreams/${id}/reset-health`);
+    fetchUpstreams();
+  };
+
+  const rotateKey = async (id: string) => {
+    const nextKey = prompt('Enter new NVIDIA API key (nvapi-...)');
+    if (!nextKey) return;
+    await api.patch(`/admin/upstreams/${id}`, { key: nextKey });
+    setRevealed((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     fetchUpstreams();
   };
 
@@ -69,7 +128,7 @@ export const Upstreams = () => {
               className="w-full border-2 border-text-primary p-4 rounded-geometric bg-bg-primary font-mono text-sm focus:outline-none focus:ring-4 focus:ring-brand-accent/50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
             />
           </div>
-          <button
+          <button 
             type="submit"
             className="w-full xl:w-auto bg-brand text-white font-bold uppercase px-8 py-4 rounded-geometric border-2 border-text-primary hover:bg-text-primary transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none flex items-center justify-center gap-2"
           >
@@ -85,28 +144,80 @@ export const Upstreams = () => {
               <div className="w-full sm:w-[70%] overflow-hidden">
                 <h3 className="text-2xl font-display font-bold uppercase truncate" title={up.name}>{up.name}</h3>
                 <div className="bg-bg-primary p-3 rounded-geometric border-2 border-text-primary/20 mt-3 overflow-x-auto">
-                  <p className="font-mono text-xs">{up.key}</p>
+                  <p className="font-mono text-xs">{revealed[up.id] ? revealed[up.id] : up.keyPreview || '********'}</p>
                 </div>
               </div>
               <span className={`px-4 py-2 rounded-full text-xs font-bold uppercase border-2 flex-shrink-0 ${up.isActive ? 'border-green-500 text-green-800 bg-green-200' : 'border-gray-400 text-gray-700 bg-gray-100'}`}>
                 {up.isActive ? 'Active' : 'Disabled'}
               </span>
             </div>
-
+            
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-t-4 border-text-primary/10 pt-6 mt-2 gap-4">
               <div className="space-y-2 w-full sm:w-auto flex sm:flex-col justify-between sm:justify-start">
-                <p className="text-xs font-bold uppercase bg-white/50 inline-block px-2 py-1 rounded">Errors: <span className={up.errorCount > 0 ? 'text-red-600 bg-red-100 px-2 py-0.5 rounded' : ''}>{up.errorCount}</span></p>
-                <p className="text-xs font-bold uppercase bg-white/50 inline-block px-2 py-1 rounded">Last Used: <br className="hidden sm:block" />{up.lastUsedAt ? format(new Date(up.lastUsedAt), 'MM/dd HH:mm:ss') : 'Never'}</p>
+                <p className="text-xs font-bold uppercase bg-white/50 inline-block px-2 py-1 rounded">
+                  Weight:&nbsp;
+                  <input
+                    className="w-16 border-2 border-text-primary rounded px-2 py-1 font-mono text-xs bg-white"
+                    type="number"
+                    min={0}
+                    value={weightDraft[up.id] ?? String(up.weight ?? 1)}
+                    onChange={(e) => setWeightDraft((prev) => ({ ...prev, [up.id]: e.target.value }))}
+                    onBlur={() => saveWeight(up.id)}
+                  />
+                </p>
+                <p className="text-xs font-bold uppercase bg-white/50 inline-block px-2 py-1 rounded">
+                  Errors:&nbsp;
+                  <span className={up.errorCount > 0 ? 'text-red-600 bg-red-100 px-2 py-0.5 rounded' : ''}>{up.errorCount}</span>
+                  &nbsp;| Failures:&nbsp;{up.consecutiveFailures ?? 0}
+                </p>
+                <p className="text-xs font-bold uppercase bg-white/50 inline-block px-2 py-1 rounded">
+                  Cooldown:&nbsp;
+                  {up.cooldownUntil ? format(new Date(up.cooldownUntil), 'MM/dd HH:mm:ss') : 'None'}
+                </p>
+                <p className="text-xs font-bold uppercase bg-white/50 inline-block px-2 py-1 rounded">
+                  Last Used:&nbsp;
+                  {up.lastUsedAt ? format(new Date(up.lastUsedAt), 'MM/dd HH:mm:ss') : 'Never'}
+                </p>
               </div>
               <div className="flex gap-3 w-full sm:w-auto justify-end">
                 <button
+                  onClick={() => toggleReveal(up.id)}
+                  disabled={busyId === up.id}
+                  className="p-3 rounded-full border-2 border-text-primary bg-white hover:bg-bg-primary text-text-primary transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
+                  title={revealed[up.id] ? 'Hide key' : 'Reveal key'}
+                >
+                  {revealed[up.id] ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
+                </button>
+                <button
+                  onClick={async () => copyToClipboard(await fetchUpstreamSecret(up.id))}
+                  disabled={busyId === up.id}
+                  className="p-3 rounded-full border-2 border-text-primary bg-white hover:bg-bg-primary text-text-primary transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
+                  title="Copy key"
+                >
+                  <Copy size={20} strokeWidth={2.5} />
+                </button>
+                <button
+                  onClick={() => resetHealth(up.id)}
+                  className="p-3 rounded-full border-2 border-text-primary bg-blue-200 hover:bg-blue-300 text-text-primary transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                  title="Reset cooldown/failures"
+                >
+                  <RefreshCw size={20} strokeWidth={2.5} />
+                </button>
+                <button
+                  onClick={() => rotateKey(up.id)}
+                  className="p-3 rounded-full border-2 border-text-primary bg-purple-200 hover:bg-purple-300 text-text-primary transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                  title="Replace key"
+                >
+                  <KeyRound size={20} strokeWidth={2.5} />
+                </button>
+                <button 
                   onClick={() => toggleStatus(up.id, up.isActive)}
                   className={`p-3 rounded-full border-2 border-text-primary transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${up.isActive ? 'bg-brand-accent text-text-primary hover:bg-yellow-400' : 'bg-green-400 hover:bg-green-500 text-text-primary'}`}
                   title={up.isActive ? "Disable" : "Enable"}
                 >
                   {up.isActive ? <PowerOff size={20} strokeWidth={2.5} /> : <Power size={20} strokeWidth={2.5} />}
                 </button>
-                <button
+                <button 
                   onClick={() => handleDelete(up.id)}
                   className="p-3 rounded-full border-2 border-text-primary bg-red-400 hover:bg-red-500 text-text-primary transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                 >
