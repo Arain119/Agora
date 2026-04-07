@@ -1,13 +1,12 @@
 module.exports = {
   apps: [
     {
-      name: 'nvidia-router',
-      script: 'npx',
-      args: 'wrangler pages dev dist --ip 0.0.0.0 --port 3000',
-      cwd: '/home/user/webapp',
+      name: 'agora',
+      script: 'backend/dist/index.js',
+      cwd: __dirname,
       env: {
-        NODE_ENV: 'development',
-        PORT: 3000
+        NODE_ENV: 'production',
+        PORT: 3001
       },
       watch: false,
       instances: 1,
