@@ -1,0 +1,27 @@
+# wrangler.toml —— Cloudflare Pages/Workers 部署配置
+# 推荐通过 Pages 的 Git 集成部署（自动打包 _worker.js 及其 import）。
+# 也可用 `npx wrangler pages deploy . ` 手动部署。
+
+name = "agora"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "."
+
+# 环境变量都是可选的，默认全自动：
+#   · 不设 UUID      → 首次运行自动生成站长 UUID 并存入 KV
+#   · 不设 ADMIN_TOKEN → 打开站点用「首次设置」一键生成管理口令（TOFU）
+# 切勿在此处写死 UUID / ADMIN_TOKEN —— wrangler.toml 的 [vars] 会被原样部署成生产值，
+# 等于公开了你的口令。需要固定值时请在 Pages 控制台 Settings → Variables（Secret）里配置。
+[vars]
+SUB_NAME = "Agora"
+# PROXYIP = ""
+# PREFERRED = "104.16.0.0#CF1,time.is#CF2"
+
+# KV 绑定：启用自适应多用户/设置管理（默认功能）。
+# 步骤：控制台 → Workers & Pages → KV → 新建 namespace（如 AGORA_KV）→ 复制其 id 填到下方，
+# 或在 Pages 项目 Settings → Functions → KV namespace bindings 里绑定，变量名同为 AGORA_KV。
+# 注意：下面的 id 必须替换为你自己的真实 id 才能在本地/CLI 部署时生效；
+#       若用 Pages 控制台 UI 绑定，可保持此处注释。
+# [[kv_namespaces]]
+# binding = "AGORA_KV"
+# id = "<your-kv-namespace-id>"
