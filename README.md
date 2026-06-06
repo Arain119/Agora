@@ -8,11 +8,12 @@
 - 🆓 **全程免费**：跑在 Cloudflare 免费额度上（每天 10 万请求，自用绰绰有余）。
 - 🤖 **近零配置**：站长 UUID、管理口令全部**自动生成**，无需手动配环境变量；打开站点一键初始化即可。
 - 📥 **一条订阅通吃**：按客户端 User-Agent 自动返回 **Clash / sing-box / 通用 base64**，无需 `?target=`。
-- 👥 **极简管理面板**：基于 KV，界面只有「加好友 + 用户列表」一件事——其余全自动，无任何设置项；每个用户一键「复制订阅 / 导入 Clash」。
-- ⚡ **优选 IP 全自动**：内置优选地址，并可开启**自动刷新**——订阅被访问时在后台（`waitUntil`）每 12h 拉取最新优选源、用 `connect()` **TCP 连通性自检剔除失效**，再缓存到 KV；面板亦可「立即刷新」。客户端再对存活优选测速择优。
+- 🎛️ **Editorial 风格控制台**：暖纸张 · 墨黑 · 单一朱红的 Swiss/编辑设计。左栏「成员名册」加好友、右栏「网络优选」仪表盘（存活率甜甜圈、优选历史 sparkline、按延迟排序的节点条、12h 自动优选周期），设置收进齿轮抽屉，改动即时生效。
+- 🪪 **好友导入页**：朋友用浏览器打开自己的订阅链接时，看到的是一张温暖的导入卡片（按名问候 + Clash/sing-box/v2rayN/Shadowrocket 一键导入 + 三步指引），而非裸 YAML；真实代理客户端按 UA 仍拿到原始订阅。
+- ⚡ **优选 IP 全自动**：订阅被访问时在后台（`waitUntil`）每 12h 多源拉取优选源、用 `connect()` **TCP 握手测延迟 + 连通性自检剔除失效**、按延迟排序缓存，并保留近 12 次存活数环形缓冲供 sparkline 展示。
 - 🔁 **proxyIP 回退**：直连受限目标时自动走中转。
-- 🧩 **自包含**：核心仅 `_worker.js` + `src/sub.mjs`，逻辑清晰可控，非黑盒。
-- ✅ **离线可验证**：`npm run gen` 本地生成并校验三种订阅，不必先部署。
+- 🧩 **前后端统一**：UI 由 `panel/` 下可编辑源 + `scripts/build-panel.mjs` 生成 `src/panel.mjs`，被 `_worker.js` 直接服务，原型与线上同源同数据。
+- ✅ **离线可验证**：`npm run check` 重建面板 + 生成校验三种订阅 + 打包 worker。
 
 ## 快速开始
 
@@ -36,12 +37,15 @@ npm install && npx wrangler login && npm run setup
 ## 项目结构
 
 ```
-_worker.js          VLESS-over-WS 服务端 + 订阅路由 + KV 管理面板/API（Cloudflare 运行时）
-src/sub.mjs         纯函数订阅生成器（worker 与离线脚本共用）
-clash/template.yaml Clash Meta 配置模板（与 sub.mjs 内联模板保持一致，有守卫校验）
-scripts/gen-sub.mjs 离线生成 + 校验脚本
-wrangler.toml       Cloudflare 部署配置
-docs/               部署 / 域名 / 使用文档
+_worker.js             VLESS-over-WS 服务端 + 订阅路由 + KV 管理面板/API（Cloudflare 运行时）
+src/sub.mjs            纯函数订阅生成器（worker 与离线脚本共用）
+src/panel.mjs          GENERATED：面板/初始化/好友页的 CSS+JS+模板（由下面 panel/ 生成）
+panel/                 可编辑 UI 源：agora.css · agora-views.css · app.prod.js · *.tmpl + 原型 HTML
+clash/template.yaml    Clash Meta 配置模板（与 sub.mjs 内联模板保持一致，有守卫校验）
+scripts/build-panel.mjs 由 panel/ 重建 src/panel.mjs
+scripts/gen-sub.mjs    离线生成 + 校验脚本
+wrangler.toml          Cloudflare 部署配置
+docs/                  部署 / 域名 / 使用文档
 ```
 
 ## 技术说明与限制

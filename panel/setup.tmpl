@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agora 初始化</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700;800;900&family=Space+Mono:wght@400;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+:root{--paper:#F1ECE0;--paper3:#fff;--ink:#1B1813;--ink-soft:#59544A;--muted:#978F7E;--line:#DDD6C6;--accent:#C8482A;--warn:#B5852A;--positive:#5C7C4A;
+--sans:'Hanken Grotesk','Noto Sans SC',system-ui,sans-serif;--mono:'Space Mono',ui-monospace,monospace;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.45}
+.wrap{max-width:760px;margin:0 auto;padding:clamp(40px,9vw,90px) clamp(20px,5vw,48px);min-height:100vh;display:flex;flex-direction:column;justify-content:center}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+.wordmark{font-weight:900;letter-spacing:-.04em;line-height:.82;font-size:clamp(64px,16vw,170px);margin-top:14px}
+.wordmark .o{color:var(--accent)}
+.lead{font-size:clamp(18px,2.4vw,24px);font-weight:500;max-width:34ch;color:var(--ink-soft);margin:22px 0 32px;letter-spacing:-.01em}
+.lead b{color:var(--ink);font-weight:700}
+.btn{font-family:var(--sans);font-weight:700;font-size:16px;padding:15px 28px;border:1.5px solid var(--accent);background:var(--accent);color:#fff;border-radius:3px;cursor:pointer;transition:filter .15s}
+.btn:hover{filter:brightness(1.08)}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.ink{background:var(--ink);border-color:var(--ink)}
+.btn.sm{font-size:13px;padding:9px 14px}
+.err{color:#b91c1c;font-size:14px;margin-top:14px;font-family:var(--mono)}
+.cred{border:2px solid var(--ink);border-radius:3px;margin-top:26px;background:var(--paper3);overflow:hidden}
+.cred .ch{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:var(--ink);color:var(--paper)}
+.cred .ch .t{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase}
+.cred .ch .seal{color:var(--accent);font-weight:900}
+.cred .cbody{padding:18px}
+.cred-item+.cred-item{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
+.field-label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.linkbox{display:flex;align-items:center;gap:10px;border:1.5px solid var(--ink);border-radius:3px;padding:12px 14px;background:var(--paper3)}
+.linkbox code{font-family:var(--mono);font-size:12.5px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linkbox a{color:var(--ink);text-decoration:none}
+.warnbar{display:flex;gap:10px;align-items:flex-start;margin-top:18px;padding:13px 15px;border:1px solid color-mix(in srgb,var(--warn) 50%,var(--line));border-radius:3px;background:color-mix(in srgb,var(--warn) 9%,var(--paper3));font-size:13px;color:var(--ink-soft);line-height:1.5}
+.warnbar b{color:var(--ink)}
+.warnbar .ex{color:var(--warn);font-weight:900}
+#done{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="kicker">零成本 · 自托管 · Cloudflare</span>
+  <h1 class="wordmark">AG<span class="o">O</span>RA</h1>
+
+  <div id="pre">
+    <p class="lead">一次性初始化。点击后自动生成<b>高熵管理口令</b>与<b>站长订阅</b>，面板随即启用 —— 无需服务器、无需配置。</p>
+    <button class="btn" id="btn" onclick="go()">初始化并启用面板 →</button>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div id="done">
+    <p class="lead">已启用。请<b>立即收藏</b>下面两条凭证 —— 本页随后不再可用。</p>
+    <div class="cred">
+      <div class="ch"><span class="t">凭证 · 仅显示一次</span><span class="seal">✦ AGORA</span></div>
+      <div class="cbody">
+        <div class="cred-item">
+          <div class="field-label">管理面板（含口令 · 切勿外泄）</div>
+          <div class="linkbox"><code><a id="adminurl" href="#" target="_blank"></a></code></div>
+        </div>
+        <div class="cred-item">
+          <div class="field-label">站长订阅链接</div>
+          <div class="linkbox"><code id="ownersub"></code></div>
+        </div>
+      </div>
+    </div>
+    <div class="warnbar"><span class="ex">!</span><span><b>口令即权限。</b>任何持有管理链接的人都能管理你的全部成员。请存入密码管理器，不要分享、不要截图外传。</span></div>
+  </div>
+</div>
+<script>
+async function go(){
+  var b=document.getElementById('btn');b.disabled=true;b.textContent='正在生成…';
+  try{
+    var r=await fetch('/__setup__',{method:'POST'});var d=await r.json();
+    if(!r.ok){document.getElementById('err').textContent=d.error||'设置失败';b.disabled=false;b.textContent='初始化并启用面板 →';return}
+    var au=location.origin+d.adminUrl;
+    var a=document.getElementById('adminurl');a.textContent=au;a.href=au;
+    document.getElementById('ownersub').textContent=location.origin+'/'+d.ownerUuid;
+    document.getElementById('pre').style.display='none';
+    document.getElementById('done').style.display='block';
+  }catch(e){document.getElementById('err').textContent='网络错误，请重试';b.disabled=false;b.textContent='初始化并启用面板 →';}
+}
+</script>
+</body>
+</html>

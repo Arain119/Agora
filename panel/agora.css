@@ -1,0 +1,149 @@
+/* ============================================================
+   AGORA — Editorial / Swiss design system
+   Warm paper · ink · single vermillion accent
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+
+:root {
+  --paper:        #F1ECE0;
+  --paper-2:      #FAF7EF;
+  --paper-3:      #FFFFFF;
+  --ink:          #1B1813;
+  --ink-soft:     #59544A;
+  --muted:        #978F7E;
+  --line:         #DDD6C6;
+  --line-strong:  #1B1813;
+  --accent:       #C8482A;   /* vermillion — tweakable */
+  --accent-ink:   #FFFFFF;
+  --positive:     #5C7C4A;   /* olive */
+  --warn:         #B5852A;
+
+  --sans: 'Hanken Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  --mono: 'Space Mono', ui-monospace, monospace;
+
+  --maxw: 1180px;
+  --gut: clamp(20px, 5vw, 64px);
+  --r: 3px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01";
+}
+
+/* paper grain */
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: 9999;
+  opacity: .035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+::selection { background: var(--accent); color: #fff; }
+
+/* ---------- typographic primitives ---------- */
+.kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mono { font-family: var(--mono); }
+.num { font-variant-numeric: tabular-nums; }
+
+.rule { height: 1px; background: var(--line); border: 0; }
+.rule-ink { height: 2px; background: var(--ink); border: 0; }
+
+/* ---------- buttons ---------- */
+.btn {
+  font-family: var(--sans);
+  font-size: 14px; font-weight: 600;
+  padding: 11px 18px;
+  border: 1.5px solid var(--ink);
+  background: transparent; color: var(--ink);
+  border-radius: var(--r);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: background .18s, color .18s, transform .06s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--ink); color: var(--paper); }
+.btn:active { transform: translateY(1px); }
+.btn.solid { background: var(--ink); color: var(--paper); }
+.btn.solid:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.accent:hover { filter: brightness(1.08); }
+.btn.ghost { border-color: var(--line); color: var(--ink-soft); }
+.btn.ghost:hover { border-color: var(--ink); background: transparent; color: var(--ink); }
+.btn.sm { padding: 7px 12px; font-size: 13px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* understated text action */
+.act {
+  font-family: var(--sans); font-size: 13px; font-weight: 600;
+  background: none; border: 0; cursor: pointer; color: var(--ink-soft);
+  padding: 4px 2px; position: relative; letter-spacing: .01em;
+  transition: color .15s;
+}
+.act::after {
+  content: ""; position: absolute; left: 2px; right: 2px; bottom: 2px;
+  height: 1.5px; background: currentColor; transform: scaleX(0);
+  transform-origin: left; transition: transform .2s;
+}
+.act:hover { color: var(--ink); }
+.act:hover::after { transform: scaleX(1); }
+.act.danger:hover { color: var(--accent); }
+
+/* status dot */
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.dot.on  { background: var(--positive); box-shadow: 0 0 0 3px color-mix(in srgb, var(--positive) 22%, transparent); }
+.dot.off { background: var(--muted); }
+
+/* ---------- toast ---------- */
+#toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px);
+  background: var(--ink); color: var(--paper);
+  font-family: var(--mono); font-size: 13px; letter-spacing: .04em;
+  padding: 11px 18px; border-radius: var(--r);
+  opacity: 0; pointer-events: none; transition: all .28s cubic-bezier(.2,.7,.3,1);
+  z-index: 200; display: flex; align-items: center; gap: 9px;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast .tk { color: var(--accent); }
+
+/* ---------- prototype screen switch ---------- */
+.screen { display: none; }
+.screen.active { display: block; animation: screenIn .42s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes screenIn { from { transform: translateY(10px); } to { transform: none; } }
+@keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* floating prototype nav */
+#protonav {
+  position: fixed; left: 18px; bottom: 18px; z-index: 150;
+  display: flex; gap: 2px; background: var(--ink); padding: 4px; border-radius: 100px;
+  box-shadow: 0 10px 30px rgba(27,24,19,.28);
+}
+#protonav button {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--paper); background: none; border: 0; cursor: pointer;
+  padding: 7px 13px; border-radius: 100px; opacity: .55; transition: .18s;
+}
+#protonav button:hover { opacity: .85; }
+#protonav button.on { background: var(--paper); color: var(--ink); opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
