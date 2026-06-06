@@ -24,11 +24,19 @@ import {
   buildBase64Sub,
   buildSingboxJson,
   pickFormatByUA,
+  parsePreferredSource,
   DEFAULT_PREFERRED_ADDRS,
 } from "./src/sub.mjs";
 
+// 优选 IP 自动刷新参数
+const PREFERRED_TTL_MS = 12 * 60 * 60 * 1000; // 缓存 12 小时
+const DEFAULT_SOURCE_URL = "https://raw.githubusercontent.com/ymyuuu/IPDB/main/BestCF/bestcfv4.txt";
+const MAX_PREFERRED = 8; // 最终保留的优选数量
+const PROBE_CANDIDATES = 12; // 连通性自检的候选上限
+const PROBE_TIMEOUT_MS = 1500;
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
       const upgrade = request.headers.get("Upgrade");
       if (upgrade && upgrade.toLowerCase() === "websocket") {
@@ -56,7 +64,7 @@ export default {
         const id = segments[0];
         const users = await allValidUsers(env);
         if (users.some((u) => u.id === id)) {
-          return await buildSubResponse(request, env, host, url.searchParams.get("target"), id);
+          return await buildSubResponse(request, env, host, url.searchParams.get("target"), id, ctx);
         }
       }
 
@@ -165,6 +173,8 @@ async function loadSettings(env) {
     proxyIP: s.proxyIP != null ? s.proxyIP : env.PROXYIP || "",
     subName: s.subName || env.SUB_NAME || "Agora",
     preferred: Array.isArray(s.preferred) && s.preferred.length ? s.preferred : parseEnvPreferred(env),
+    autoRefresh: typeof s.autoRefresh === "boolean" ? s.autoRefresh : true,
+    sourceUrl: s.sourceUrl || env.SOURCE_URL || DEFAULT_SOURCE_URL,
   };
 }
 
@@ -172,16 +182,92 @@ async function saveSettings(env, settings) {
   await env.AGORA_KV.put("settings", JSON.stringify(settings));
 }
 
+// ---------- 优选 IP：自动刷新 + 连通性自检 ----------
+
+// 解析当前生效的优选地址；自动模式下在后台惰性刷新（不阻塞响应）
+async function getEffectivePreferred(env, settings, ctx) {
+  if (!settings.autoRefresh) {
+    return settings.preferred && settings.preferred.length ? settings.preferred : DEFAULT_PREFERRED_ADDRS;
+  }
+  let cache = null;
+  if (env.AGORA_KV) {
+    const raw = await env.AGORA_KV.get("auto_preferred");
+    if (raw) {
+      try {
+        cache = JSON.parse(raw);
+      } catch {
+        cache = null;
+      }
+    }
+  }
+  const fresh = cache && Array.isArray(cache.addrs) && cache.addrs.length;
+  const stale = !fresh || Date.now() - (cache.updated || 0) > PREFERRED_TTL_MS;
+  if (stale && env.AGORA_KV && ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(refreshPreferred(env, settings)); // 后台刷新，不阻塞本次响应
+  }
+  return fresh ? cache.addrs : DEFAULT_PREFERRED_ADDRS;
+}
+
+// 拉取优选来源 → 解析 → 连通性自检剔除失效 → 写入 KV
+async function refreshPreferred(env, settings) {
+  try {
+    const url = (settings && settings.sourceUrl) || DEFAULT_SOURCE_URL;
+    const res = await fetch(url, { cf: { cacheTtl: 300, cacheEverything: true } });
+    if (!res.ok) return null;
+    const text = await res.text();
+    const cands = parsePreferredSource(text, PROBE_CANDIDATES * 2);
+    if (!cands.length) return null;
+    const alive = await filterAlive(cands, MAX_PREFERRED);
+    const addrs = alive.length ? alive : cands.slice(0, MAX_PREFERRED);
+    if (env.AGORA_KV) {
+      await env.AGORA_KV.put(
+        "auto_preferred",
+        JSON.stringify({ updated: Date.now(), addrs, source: url, checked: cands.length, alive: alive.length })
+      );
+    }
+    return addrs;
+  } catch {
+    return null;
+  }
+}
+
+// 并发 TCP 探测，保留连得通的（保持原顺序），最多 want 个
+async function filterAlive(cands, want) {
+  const slice = cands.slice(0, PROBE_CANDIDATES);
+  const results = await Promise.all(
+    slice.map(async (c) => ({ c, ok: await tcpAlive(c.addr, 443, PROBE_TIMEOUT_MS) }))
+  );
+  return results.filter((r) => r.ok).map((r) => r.c).slice(0, want);
+}
+
+// 对 host:443 做一次带超时的 TCP 握手探测
+async function tcpAlive(host, port, ms) {
+  let socket;
+  try {
+    socket = connect({ hostname: host, port });
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms));
+    await Promise.race([socket.opened, timeout]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      if (socket) await socket.close();
+    } catch {}
+  }
+}
+
 // ---------- 订阅生成 ----------
 
-async function buildSubResponse(request, env, host, target, uuid) {
+async function buildSubResponse(request, env, host, target, uuid, ctx) {
   const settings = await loadSettings(env);
+  const preferred = await getEffectivePreferred(env, settings, ctx);
   const opts = {
     uuid,
     host,
     path: "/?ed=2560",
     subName: settings.subName,
-    preferred: settings.preferred,
+    preferred,
     port: 443,
   };
 
@@ -266,7 +352,20 @@ async function handleAdminApi(rest, request, env) {
   }
 
   if (rest[0] === "settings" && rest.length === 1) {
-    if (method === "GET") return json({ settings: await loadSettings(env) });
+    if (method === "GET") {
+      const settings = await loadSettings(env);
+      let auto = null;
+      if (env.AGORA_KV) {
+        const raw = await env.AGORA_KV.get("auto_preferred");
+        if (raw) {
+          try {
+            const c = JSON.parse(raw);
+            auto = { updated: c.updated, count: (c.addrs || []).length, alive: c.alive, checked: c.checked };
+          } catch {}
+        }
+      }
+      return json({ settings, auto });
+    }
     if (method === "POST") {
       const body = await readJson(request);
       const cur = await loadSettings(env);
@@ -274,10 +373,20 @@ async function handleAdminApi(rest, request, env) {
         proxyIP: typeof body.proxyIP === "string" ? body.proxyIP : cur.proxyIP,
         subName: typeof body.subName === "string" && body.subName ? body.subName : cur.subName,
         preferred: Array.isArray(body.preferred) ? body.preferred : cur.preferred,
+        autoRefresh: typeof body.autoRefresh === "boolean" ? body.autoRefresh : cur.autoRefresh,
+        sourceUrl: typeof body.sourceUrl === "string" && body.sourceUrl ? body.sourceUrl : cur.sourceUrl,
       };
       await saveSettings(env, next);
       return json({ ok: true, settings: next });
     }
+  }
+
+  // 手动「立即刷新优选」：拉取 + 连通性自检（同步返回结果）
+  if (rest[0] === "refresh" && rest.length === 1 && method === "POST") {
+    const settings = await loadSettings(env);
+    const addrs = await refreshPreferred(env, settings);
+    if (!addrs) return json({ error: "刷新失败：来源不可达或无有效地址" }, 502);
+    return json({ ok: true, count: addrs.length, addrs, updated: Date.now() });
   }
 
   return json({ error: "未知接口" }, 404);
@@ -354,8 +463,12 @@ function adminPanelHTML(token, host) {
     "<h2>设置 <span id=\"smsg\" class=\"tag\"></span></h2>" +
     '<p class="muted">改动即自动保存、即时对所有订阅生效，无需重新部署。</p>' +
     '<div class="row">订阅名前缀 <input id="subName" style="width:160px" oninput="saveSoon()"></div>' +
+    '<div class="row"><label><input type="checkbox" id="autoRefresh" onchange="onAuto()"> 自动优选 IP（每 12h 定时刷新 + 连通性自检剔除失效）</label></div>' +
+    '<div class="row">优选来源 <input id="sourceUrl" style="width:460px" placeholder="留空用内置默认源" oninput="saveSoon()">' +
+    '<button onclick="refreshNow()">立即刷新</button></div>' +
+    '<div class="row"><span id="autometa" class="muted"></span></div>' +
+    '<div class="row">手动优选 <input id="preferred" style="width:460px" placeholder="addr#备注，逗号分隔（关闭自动时生效）" oninput="saveSoon()"></div>' +
     '<div class="row">proxyIP <input id="proxyIP" style="width:280px" placeholder="可留空；仅个别站点直连失败时用作中转" oninput="saveSoon()"></div>' +
-    '<div class="row">优选地址 <input id="preferred" style="width:460px" placeholder="addr#备注，逗号分隔" oninput="saveSoon()"></div>' +
     "<script>" +
     "var BASE=" + JSON.stringify(base) + ";var HOST=" + JSON.stringify(host) + ";var SUBNAME='Agora';" +
     "function origin(){return location.protocol+'//'+HOST}" +
@@ -379,13 +492,21 @@ function adminPanelHTML(token, host) {
     "async function del(id){if(!confirm('确认删除该用户？其订阅将立即失效。'))return;await api('/users/'+id,{method:'DELETE'});loadUsers()}" +
     "async function toggle(id,en){await api('/users/'+id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:en==='true'})});loadUsers()}" +
     "var saveTimer=null;function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveSettings,600)}" +
+    "function applyAutoState(){var a=document.getElementById('autoRefresh').checked;document.getElementById('preferred').disabled=a;document.getElementById('sourceUrl').disabled=!a}" +
+    "function onAuto(){applyAutoState();saveSoon()}" +
+    "function renderMeta(a){var e=document.getElementById('autometa');if(!a){e.textContent='';return}var t=a.updated?new Date(a.updated).toLocaleString():'';" +
+    "e.textContent='自动优选当前 '+(a.count||0)+' 个'+(a.checked?'（探测 '+a.checked+' 个，存活 '+a.alive+'）':'')+(t?'，更新于 '+t:'')}" +
     "async function loadSettings(){var d=await api('/settings');var s=d.settings;SUBNAME=s.subName||'Agora';" +
     "document.getElementById('subName').value=s.subName||'';document.getElementById('proxyIP').value=s.proxyIP||'';" +
-    "document.getElementById('preferred').value=(s.preferred||[]).map(function(p){return p.addr+'#'+(p.note||p.addr)}).join(',')}" +
+    "document.getElementById('autoRefresh').checked=!!s.autoRefresh;document.getElementById('sourceUrl').value=s.sourceUrl||'';" +
+    "document.getElementById('preferred').value=(s.preferred||[]).map(function(p){return p.addr+'#'+(p.note||p.addr)}).join(',');" +
+    "renderMeta(d.auto);applyAutoState()}" +
     "async function saveSettings(){var pref=document.getElementById('preferred').value.split(',').map(function(x){x=x.trim();if(!x)return null;var a=x.split('#');return{addr:a[0].trim(),note:(a[1]||a[0]).trim()}}).filter(Boolean);" +
-    "var body={subName:document.getElementById('subName').value,proxyIP:document.getElementById('proxyIP').value,preferred:pref};" +
+    "var body={subName:document.getElementById('subName').value,proxyIP:document.getElementById('proxyIP').value,preferred:pref," +
+    "autoRefresh:document.getElementById('autoRefresh').checked,sourceUrl:document.getElementById('sourceUrl').value};" +
     "var d=await api('/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});" +
     "SUBNAME=(d.settings&&d.settings.subName)||SUBNAME;toast('已自动保存 ✓')}" +
+    "async function refreshNow(){toast('刷新中…');var d=await api('/refresh',{method:'POST'});if(d.error){toast('刷新失败');return}toast('已更新 '+d.count+' 个优选 ✓');loadSettings()}" +
     "loadSettings().then(loadUsers);" +
     "</script></body></html>"
   );

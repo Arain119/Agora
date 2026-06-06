@@ -242,6 +242,42 @@ export function buildSingboxJson(opts) {
   return JSON.stringify(config, null, 2);
 }
 
+// 解析「优选来源」文本为地址列表（纯函数，便于离线测试）。
+// 兼容：每行/逗号分隔，支持 `ip`、`ip:port`、`ip#备注`、`ip:port#备注`、域名；忽略注释行。
+export function parsePreferredSource(text, max = 10) {
+  if (!text) return [];
+  const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
+  const out = [];
+  const seen = new Set();
+  for (const rawLine of text.split(/[\r\n,]+/)) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith("//")) continue;
+
+    let note = "";
+    const hashIdx = line.indexOf("#");
+    if (hashIdx >= 0) {
+      note = line.slice(hashIdx + 1).trim();
+      line = line.slice(0, hashIdx).trim();
+    }
+
+    // 去掉端口：ip:port 或 host:port
+    let addr = line;
+    const portMatch = line.match(/^(.+):(\d{2,5})$/);
+    if (portMatch) addr = portMatch[1].trim();
+
+    const isIp = ipv4.test(addr);
+    const isHost = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(addr);
+    if (!isIp && !isHost) continue;
+    if (isIp && addr.split(".").some((o) => Number(o) > 255)) continue;
+    if (seen.has(addr)) continue;
+
+    seen.add(addr);
+    out.push({ addr, note: note || `优选-${out.length + 1}` });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 // 根据客户端 User-Agent 自动选择订阅格式
 // 返回 "clash" | "singbox" | "base64"
 export function pickFormatByUA(ua) {

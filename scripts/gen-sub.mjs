@@ -14,7 +14,13 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { buildClashYaml, buildBase64Sub, buildSingboxJson, CLASH_TEMPLATE } from "../src/sub.mjs";
+import {
+  buildClashYaml,
+  buildBase64Sub,
+  buildSingboxJson,
+  parsePreferredSource,
+  CLASH_TEMPLATE,
+} from "../src/sub.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -62,6 +68,17 @@ if (!Array.isArray(sb.outbounds) || !sb.outbounds.some((o) => o.type === "vless"
   process.exit(1);
 }
 console.log("✓ sing-box JSON 解析通过");
+
+// 守卫 4：优选来源解析（兼容多种格式、去重、剔除非法）
+const sample = "# comment\n104.16.1.1\n104.16.1.1\n1.2.3.4:443#港区\nbad_entry\nexample.com\n999.1.1.1\n104.17.2.2, 104.18.3.3";
+const parsed = parsePreferredSource(sample, 10);
+const addrs = parsed.map((p) => p.addr);
+const expect = ["104.16.1.1", "1.2.3.4", "example.com", "104.17.2.2", "104.18.3.3"];
+if (JSON.stringify(addrs) !== JSON.stringify(expect)) {
+  console.error("✗ parsePreferredSource 结果不符，得到：", addrs);
+  process.exit(1);
+}
+console.log("✓ 优选来源解析通过");
 
 // 写出
 mkdirSync(join(root, "out"), { recursive: true });
