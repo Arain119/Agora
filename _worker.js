@@ -476,23 +476,12 @@ function adminPanelHTML(token, host) {
     "input{padding:8px 10px;border:1px solid #ccc;border-radius:8px;font-size:14px}" +
     ".row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}" +
     ".lk{color:#2563eb;cursor:pointer;font-size:12px;margin-left:8px}.lk.danger{color:#b91c1c}" +
-    ".muted{color:#888;font-size:12px}.tag{font-size:11px;color:#16a34a}" +
-    "details{margin-top:26px;border-top:1px solid #eee;padding-top:8px}summary{cursor:pointer;color:#555;font-weight:600}" +
-    "details .row{font-size:13px}label{font-size:13px}</style></head><body>" +
+    ".muted{color:#888;font-size:12px}.tag{font-size:11px;color:#16a34a}</style></head><body>" +
     "<h1>🛠️ Agora <span id=\"smsg\" class=\"tag\"></span></h1>" +
-    '<p class="muted">订阅按客户端自动适配 Clash / sing-box / 通用格式；优选 IP 自动维护。</p>' +
+    '<p class="muted">订阅按客户端自动适配 Clash / sing-box / 通用格式；优选 IP 自动维护，无需任何设置。</p>' +
     '<div class="row"><input id="newName" placeholder="输入好友名称，回车添加" style="flex:1">' +
     '<button class="primary" onclick="addUser()">添加</button></div>' +
     '<table><tbody id="users"></tbody></table>' +
-    "<details><summary>⚙️ 高级设置（一般无需改动）</summary>" +
-    '<div class="row">订阅名前缀 <input id="subName" style="width:150px" oninput="saveSoon()"></div>' +
-    '<div class="row"><label><input type="checkbox" id="autoRefresh" onchange="onAuto()"> 自动优选 IP（每 12h 刷新 + 连通性自检）</label>' +
-    '<button onclick="refreshNow()">立即刷新</button></div>' +
-    '<div class="row"><span id="autometa" class="muted"></span></div>' +
-    '<div class="row">优选来源 <input id="sourceUrl" style="width:100%;max-width:520px" placeholder="可填多个，逗号/换行分隔；留空用默认源" oninput="saveSoon()"></div>' +
-    '<div class="row">手动优选 <input id="preferred" style="width:100%;max-width:520px" placeholder="addr#备注，逗号分隔（关闭自动时生效）" oninput="saveSoon()"></div>' +
-    '<div class="row">proxyIP <input id="proxyIP" style="width:280px" placeholder="可留空；仅个别站点直连失败时用作中转" oninput="saveSoon()"></div>' +
-    "</details>" +
     "<script>" +
     "var BASE=" + JSON.stringify(base) + ";var HOST=" + JSON.stringify(host) + ";var SUBNAME='Agora';" +
     "function subLink(id){return location.protocol+'//'+HOST+'/'+id}" +
@@ -518,23 +507,8 @@ function adminPanelHTML(token, host) {
     "document.getElementById('newName').addEventListener('keydown',function(e){if(e.key==='Enter')addUser()});" +
     "async function del(id){if(!confirm('确认删除？该用户订阅将立即失效。'))return;await api('/users/'+id,{method:'DELETE'});loadUsers()}" +
     "async function toggle(id,en){await api('/users/'+id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:en})});loadUsers()}" +
-    "var saveTimer=null;function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveSettings,600)}" +
-    "function applyAutoState(){var a=document.getElementById('autoRefresh').checked;document.getElementById('preferred').disabled=a;document.getElementById('sourceUrl').disabled=!a}" +
-    "function onAuto(){applyAutoState();saveSoon()}" +
-    "function renderMeta(a){var e=document.getElementById('autometa');if(!a){e.textContent='';return}var t=a.updated?new Date(a.updated).toLocaleString():'';" +
-    "e.textContent='自动优选当前 '+(a.count||0)+' 个'+(a.checked?'（探测 '+a.checked+'，存活 '+a.alive+'）':'')+(t?'，更新于 '+t:'')}" +
-    "async function loadSettings(){var d=await api('/settings');var s=d.settings;SUBNAME=s.subName||'Agora';" +
-    "document.getElementById('subName').value=s.subName||'';document.getElementById('proxyIP').value=s.proxyIP||'';" +
-    "document.getElementById('autoRefresh').checked=!!s.autoRefresh;document.getElementById('sourceUrl').value=s.sourceUrl||'';" +
-    "document.getElementById('preferred').value=(s.preferred||[]).map(function(p){return p.addr+'#'+(p.note||p.addr)}).join(',');" +
-    "renderMeta(d.auto);applyAutoState()}" +
-    "async function saveSettings(){var pref=document.getElementById('preferred').value.split(',').map(function(x){x=x.trim();if(!x)return null;var a=x.split('#');return{addr:a[0].trim(),note:(a[1]||a[0]).trim()}}).filter(Boolean);" +
-    "var body={subName:document.getElementById('subName').value,proxyIP:document.getElementById('proxyIP').value,preferred:pref," +
-    "autoRefresh:document.getElementById('autoRefresh').checked,sourceUrl:document.getElementById('sourceUrl').value};" +
-    "var d=await api('/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});" +
-    "SUBNAME=(d.settings&&d.settings.subName)||SUBNAME;toast('已保存 ✓')}" +
-    "async function refreshNow(){toast('刷新中…');var d=await api('/refresh',{method:'POST'});if(d.error){toast('刷新失败');return}toast('已更新 '+d.count+' 个优选 ✓');loadSettings()}" +
-    "loadSettings().then(loadUsers);" +
+    "api('/settings').then(function(d){if(d&&d.settings&&d.settings.subName)SUBNAME=d.settings.subName});" +
+    "loadUsers();" +
     "</script></body></html>"
   );
 }
