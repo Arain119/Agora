@@ -1,23 +1,31 @@
 // _worker.js
-// Cloudflare Pages/Workers 上的 VLESS-over-WebSocket 服务端 + Clash 订阅生成器
-// + 基于 KV 的自适应多用户/设置管理（默认启用）。
+// Cloudflare Pages/Workers 上的 VLESS-over-WebSocket 服务端 + 多格式订阅生成器
+// + 基于 KV 的自适应多用户管理（默认启用，尽量零配置）。
 //
-// 部署方式：通过 Cloudflare Pages 的 Git 集成（或 wrangler）部署，
-// 构建过程会用 esbuild 打包本文件及其 import，因此可以安全地 import ./src/sub.mjs。
+// 设计目标：把所有手动步骤改为自动——
+//   · 站长 UUID：未设环境变量时，首次运行自动生成并持久化到 KV
+//   · 管理口令：支持「首次访问设置(TOFU)」，无需预先配置 ADMIN_TOKEN 环境变量
+//   · 订阅格式：按客户端 User-Agent 自动返回 Clash / sing-box / 通用 base64
+//   · 设置：管理面板内改动即自动保存、即时生效，无需重新部署
 //
-// 环境变量：
-//   UUID        —— 站长(owner) 的 VLESS ID，同时是其订阅 token。即使不绑 KV 也始终有效。
-//   ADMIN_TOKEN —— 管理面板访问令牌，访问 /<ADMIN_TOKEN> 打开面板（建议用一个长随机串）
-//   PROXYIP     —— 直连受限目标时的中转 IP[:端口]（可在面板里覆盖）
-//   SUB_NAME    —— 订阅/节点名前缀，默认 "Agora"（可在面板里覆盖）
-//   PREFERRED   —— 默认优选地址，逗号分隔 addr#备注（可在面板里覆盖）
+// 环境变量（全部可选）：
+//   UUID        —— 站长 VLESS ID；不填则自动生成并存入 KV
+//   ADMIN_TOKEN —— 管理口令；不填则用「首次访问设置」在网页上设定
+//   PROXYIP     —— 直连失败时的中转 IP[:端口]（可在面板里改）
+//   SUB_NAME    —— 订阅/节点名前缀，默认 "Agora"（可在面板里改）
+//   PREFERRED   —— 默认优选地址 addr#备注，逗号分隔（可在面板里改）
 //
-// KV 绑定（启用自适应管理）：
-//   binding = "AGORA_KV"
-//   未绑定时自动降级为仅 env.UUID 单用户，管理面板会提示去绑定 KV。
+// KV 绑定（变量名 AGORA_KV）：持久化用户/设置/自动生成的口令与站长 UUID。
+//   未绑定时退化为仅 env.UUID 单用户，且无法使用管理面板。
 
 import { connect } from "cloudflare:sockets";
-import { buildClashYaml, buildBase64Sub, DEFAULT_PREFERRED_ADDRS } from "./src/sub.mjs";
+import {
+  buildClashYaml,
+  buildBase64Sub,
+  buildSingboxJson,
+  pickFormatByUA,
+  DEFAULT_PREFERRED_ADDRS,
+} from "./src/sub.mjs";
 
 export default {
   async fetch(request, env) {
@@ -31,34 +39,78 @@ export default {
       const host = request.headers.get("Host") || url.host;
       const segments = url.pathname.split("/").filter(Boolean);
 
-      // 管理面板 / 管理 API（受 ADMIN_TOKEN 保护）
-      if (env.ADMIN_TOKEN && segments[0] === env.ADMIN_TOKEN) {
-        return await handleAdmin(segments.slice(1), request, env, host);
+      // 首次访问设置（TOFU）：设定管理口令
+      if (request.method === "POST" && url.pathname === "/__setup__") {
+        return await handleSetup(request, env);
       }
 
-      // 订阅路由：/<uuid>，uuid 必须是有效用户
+      const adminToken = await effectiveAdminToken(env);
+
+      // 管理面板 / API
+      if (adminToken && segments[0] === adminToken) {
+        return await handleAdmin(segments.slice(1), request, env, host, adminToken);
+      }
+
+      // 订阅：/<uuid>
       if (segments.length === 1) {
         const id = segments[0];
         const users = await allValidUsers(env);
         if (users.some((u) => u.id === id)) {
-          return await buildSubResponse(env, host, url.searchParams.get("target"), id);
+          return await buildSubResponse(request, env, host, url.searchParams.get("target"), id);
         }
       }
 
+      // 根路径：尚未设置口令且已绑 KV → 显示首次设置页
+      if (url.pathname === "/" && !adminToken && env.AGORA_KV) {
+        return new Response(setupPageHTML(host), { headers: htmlHeaders() });
+      }
+
       // 伪装首页
-      return new Response(maskHomepage(), {
-        status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      return new Response(maskHomepage(), { headers: htmlHeaders() });
     } catch (err) {
       return new Response("Error: " + (err && err.message), { status: 500 });
     }
   },
 };
 
+// ---------- 口令与身份（自动化） ----------
+
+// 有效管理口令：环境变量优先，其次 KV 中 TOFU 设定的口令
+async function effectiveAdminToken(env) {
+  if (env.ADMIN_TOKEN) return env.ADMIN_TOKEN;
+  if (env.AGORA_KV) {
+    const t = await env.AGORA_KV.get("admin_token");
+    if (t) return t;
+  }
+  return null;
+}
+
+// 站长 UUID：环境变量优先，否则自动生成并持久化到 KV
+async function getOwnerUUID(env) {
+  if (env.UUID) return env.UUID;
+  if (!env.AGORA_KV) return null;
+  let u = await env.AGORA_KV.get("owner_uuid");
+  if (!u) {
+    u = crypto.randomUUID();
+    await env.AGORA_KV.put("owner_uuid", u);
+  }
+  return u;
+}
+
+async function handleSetup(request, env) {
+  if (!env.AGORA_KV) return json({ error: "未绑定 KV，无法保存口令" }, 503);
+  if (await effectiveAdminToken(env)) {
+    return json({ error: "管理口令已设置，禁止重复初始化" }, 409);
+  }
+  // 自动生成高熵管理口令（无需用户自拟弱口令）
+  const token = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "");
+  await env.AGORA_KV.put("admin_token", token);
+  const owner = await getOwnerUUID(env);
+  return json({ ok: true, adminUrl: "/" + token, ownerUuid: owner });
+}
+
 // ---------- 用户与设置（KV 自适应管理） ----------
 
-// 读取 KV 中受管理的用户列表（不含站长）
 async function readKvUsers(env) {
   if (!env.AGORA_KV) return [];
   const raw = await env.AGORA_KV.get("users");
@@ -75,10 +127,11 @@ async function saveKvUsers(env, users) {
   await env.AGORA_KV.put("users", JSON.stringify(users));
 }
 
-// 全部有效用户 = 站长(env.UUID) + KV 中 enabled 的用户
+// 全部有效用户 = 站长 + KV 中 enabled 的用户
 async function allValidUsers(env) {
   const list = [];
-  if (env.UUID) list.push({ id: env.UUID, name: "站长", owner: true, enabled: true });
+  const owner = await getOwnerUUID(env);
+  if (owner) list.push({ id: owner, name: "站长", owner: true, enabled: true });
   for (const u of await readKvUsers(env)) {
     if (u && u.id && u.enabled !== false) list.push({ ...u, owner: false });
   }
@@ -96,7 +149,6 @@ function parseEnvPreferred(env) {
     });
 }
 
-// 合并后的设置：KV 优先，回退到环境变量
 async function loadSettings(env) {
   let s = {};
   if (env.AGORA_KV) {
@@ -122,7 +174,7 @@ async function saveSettings(env, settings) {
 
 // ---------- 订阅生成 ----------
 
-async function buildSubResponse(env, host, target, uuid) {
+async function buildSubResponse(request, env, host, target, uuid) {
   const settings = await loadSettings(env);
   const opts = {
     uuid,
@@ -133,12 +185,18 @@ async function buildSubResponse(env, host, target, uuid) {
     port: 443,
   };
 
-  if (target === "v2ray" || target === "base64") {
+  const fmt = target || pickFormatByUA(request.headers.get("User-Agent"));
+
+  if (fmt === "v2ray" || fmt === "base64") {
     return new Response(buildBase64Sub(opts), {
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-
+  if (fmt === "singbox") {
+    return new Response(buildSingboxJson(opts), {
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
   return new Response(buildClashYaml(opts), {
     headers: {
       "content-type": "text/yaml; charset=utf-8",
@@ -146,6 +204,10 @@ async function buildSubResponse(env, host, target, uuid) {
       "content-disposition": `attachment; filename=${encodeURIComponent(opts.subName)}.yaml`,
     },
   });
+}
+
+function htmlHeaders() {
+  return { "content-type": "text/html; charset=utf-8" };
 }
 
 function maskHomepage() {
@@ -156,33 +218,22 @@ function maskHomepage() {
 
 // ---------- 管理面板 / API ----------
 
-async function handleAdmin(rest, request, env, host) {
+async function handleAdmin(rest, request, env, host, adminToken) {
   if (!env.AGORA_KV) {
-    return json(
-      { error: "未绑定 KV namespace 'AGORA_KV'，自适应管理不可用。请见 docs/DEPLOY.md 绑定后重试。" },
-      503
-    );
+    return json({ error: "未绑定 KV namespace 'AGORA_KV'，自适应管理不可用。" }, 503);
   }
-
-  // API：/<token>/api/...
   if (rest[0] === "api") {
     return await handleAdminApi(rest.slice(1), request, env);
   }
-
-  // 面板页面：/<token>
-  return new Response(adminPanelHTML(env.ADMIN_TOKEN, host), {
-    headers: { "content-type": "text/html; charset=utf-8" },
-  });
+  return new Response(adminPanelHTML(adminToken, host), { headers: htmlHeaders() });
 }
 
 async function handleAdminApi(rest, request, env) {
   const method = request.method.toUpperCase();
+  const owner = await getOwnerUUID(env);
 
-  // /api/users
   if (rest[0] === "users" && rest.length === 1) {
-    if (method === "GET") {
-      return json({ users: await allValidUsers(env) });
-    }
+    if (method === "GET") return json({ users: await allValidUsers(env) });
     if (method === "POST") {
       const body = await readJson(request);
       const name = (body.name || "用户").toString().slice(0, 40);
@@ -194,12 +245,9 @@ async function handleAdminApi(rest, request, env) {
     }
   }
 
-  // /api/users/<id>
   if (rest[0] === "users" && rest.length === 2) {
     const id = rest[1];
-    if (id === env.UUID) {
-      return json({ error: "站长账号由环境变量管理，不能在此删除/修改。" }, 400);
-    }
+    if (id === owner) return json({ error: "站长账号受保护，不能在此删除/修改。" }, 400);
     if (method === "DELETE") {
       const kv = (await readKvUsers(env)).filter((u) => u.id !== id);
       await saveKvUsers(env, kv);
@@ -217,11 +265,8 @@ async function handleAdminApi(rest, request, env) {
     }
   }
 
-  // /api/settings
   if (rest[0] === "settings" && rest.length === 1) {
-    if (method === "GET") {
-      return json({ settings: await loadSettings(env) });
-    }
+    if (method === "GET") return json({ settings: await loadSettings(env) });
     if (method === "POST") {
       const body = await readJson(request);
       const cur = await loadSettings(env);
@@ -253,64 +298,95 @@ async function readJson(request) {
   }
 }
 
+// 首次访问设置页（TOFU）：设定一次管理口令
+function setupPageHTML(host) {
+  return (
+    '<!doctype html><html lang="zh"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    "<title>Agora 初始化</title><style>" +
+    "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:60px auto;padding:0 16px;color:#222}" +
+    "h1{font-size:20px}" +
+    "button{margin-top:12px;width:100%;padding:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:15px;cursor:pointer}" +
+    ".muted{color:#888;font-size:13px}code{background:#f5f5f5;padding:2px 6px;border-radius:4px;word-break:break-all}" +
+    "#done{display:none;margin-top:20px;padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px}" +
+    "a{color:#2563eb}</style></head><body>" +
+    "<h1>🔐 一键初始化</h1>" +
+    '<p class="muted">部署后的一次性初始化：点击下方按钮自动生成管理口令并启用面板。' +
+    "生成的管理链接含随机口令，请务必收藏保存；本页随后不再可用。</p>" +
+    '<button onclick="go()" id="btn">🚀 生成并启用管理面板</button>' +
+    '<p id="err" class="muted" style="color:#b91c1c"></p>' +
+    '<div id="done"><b>✅ 已启用！请收藏下面的管理链接（含口令，勿外泄）：</b><br><br>' +
+    '管理面板：<a id="adminurl" href="#" target="_blank"></a><br><br>' +
+    '站长订阅：<code id="ownersub"></code></div>' +
+    "<script>" +
+    "async function go(){document.getElementById('btn').disabled=true;" +
+    "var r=await fetch('/__setup__',{method:'POST'});" +
+    "var d=await r.json();if(!r.ok){document.getElementById('err').textContent=d.error||'设置失败';document.getElementById('btn').disabled=false;return}" +
+    "var au=location.origin+d.adminUrl;document.getElementById('adminurl').textContent=au;document.getElementById('adminurl').href=au;" +
+    "document.getElementById('ownersub').textContent=location.origin+'/'+d.ownerUuid;" +
+    "document.getElementById('done').style.display='block';}" +
+    "</script></body></html>"
+  );
+}
+
 function adminPanelHTML(token, host) {
   const base = "/" + token;
-  // 注意：页面内 <script> 不使用反引号，避免与外层模板字符串冲突。
   return (
     '<!doctype html><html lang="zh"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     "<title>Agora 管理面板</title><style>" +
-    "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:860px;margin:24px auto;padding:0 16px;color:#222}" +
+    "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:920px;margin:24px auto;padding:0 16px;color:#222}" +
     "h1{font-size:20px}h2{font-size:16px;margin-top:28px;border-bottom:1px solid #eee;padding-bottom:6px}" +
-    "table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:8px;border-bottom:1px solid #f0f0f0}" +
-    "button{cursor:pointer;border:1px solid #ccc;background:#fafafa;border-radius:6px;padding:5px 10px;font-size:13px}" +
+    "table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:8px;border-bottom:1px solid #f0f0f0;vertical-align:top}" +
+    "button{cursor:pointer;border:1px solid #ccc;background:#fafafa;border-radius:6px;padding:4px 9px;font-size:13px;margin-right:4px}" +
     "button.primary{background:#2563eb;color:#fff;border-color:#2563eb}button.danger{color:#b91c1c;border-color:#f0c0c0}" +
     "input{padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-size:14px}" +
     ".row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}" +
     "code{background:#f5f5f5;padding:2px 5px;border-radius:4px;font-size:12px;word-break:break-all}" +
-    ".muted{color:#888;font-size:12px}</style></head><body>" +
+    ".muted{color:#888;font-size:12px}.tag{font-size:11px;color:#16a34a}</style></head><body>" +
     "<h1>🛠️ Agora 管理面板</h1>" +
-    '<p class="muted">域名：<code>' + host + "</code></p>" +
+    '<p class="muted">域名 <code>' + host + "</code> ｜ 订阅按客户端自动适配 Clash / sing-box / 通用格式</p>" +
     "<h2>用户</h2>" +
-    '<div class="row"><input id="newName" placeholder="新用户名称（如 张三）">' +
-    '<button class="primary" onclick="addUser()">+ 添加用户</button></div>' +
-    '<table><thead><tr><th>名称</th><th>UUID / 订阅链接</th><th>状态</th><th>操作</th></tr></thead>' +
+    '<div class="row"><input id="newName" placeholder="输入名称后回车即可添加（如 张三）">' +
+    '<button class="primary" onclick="addUser()">+ 添加</button></div>' +
+    '<table><thead><tr><th>名称</th><th>订阅链接</th><th>操作</th></tr></thead>' +
     '<tbody id="users"></tbody></table>' +
-    "<h2>设置</h2>" +
-    '<div class="row">订阅名前缀 <input id="subName" style="width:160px"></div>' +
-    '<div class="row">proxyIP <input id="proxyIP" style="width:260px" placeholder="如 1.2.3.4:443，可留空"></div>' +
-    '<div class="row">优选地址 <input id="preferred" style="width:420px" placeholder="addr#备注，逗号分隔"></div>' +
-    '<div class="row"><button class="primary" onclick="saveSettings()">保存设置</button>' +
-    '<span id="msg" class="muted"></span></div>' +
+    "<h2>设置 <span id=\"smsg\" class=\"tag\"></span></h2>" +
+    '<p class="muted">改动即自动保存、即时对所有订阅生效，无需重新部署。</p>' +
+    '<div class="row">订阅名前缀 <input id="subName" style="width:160px" oninput="saveSoon()"></div>' +
+    '<div class="row">proxyIP <input id="proxyIP" style="width:280px" placeholder="可留空；仅个别站点直连失败时用作中转" oninput="saveSoon()"></div>' +
+    '<div class="row">优选地址 <input id="preferred" style="width:460px" placeholder="addr#备注，逗号分隔" oninput="saveSoon()"></div>' +
     "<script>" +
-    "var BASE=" + JSON.stringify(base) + ";var HOST=" + JSON.stringify(host) + ";" +
-    "function subLink(id){return location.protocol+'//'+HOST+'/'+id}" +
+    "var BASE=" + JSON.stringify(base) + ";var HOST=" + JSON.stringify(host) + ";var SUBNAME='Agora';" +
+    "function origin(){return location.protocol+'//'+HOST}" +
+    "function subLink(id){return origin()+'/'+id}" +
+    "function clashImport(id,name){return 'clash://install-config?url='+encodeURIComponent(subLink(id))+'&name='+encodeURIComponent(SUBNAME+'-'+name)}" +
     "async function api(p,opt){var r=await fetch(BASE+'/api'+p,opt);return r.json()}" +
     "function esc(s){return String(s).replace(/[&<>\"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]})}" +
+    "async function copy(t){try{await navigator.clipboard.writeText(t);toast('已复制 ✓')}catch(e){prompt('手动复制：',t)}}" +
+    "function toast(m){var s=document.getElementById('smsg');s.textContent=m;setTimeout(function(){s.textContent=''},1500)}" +
     "async function loadUsers(){var d=await api('/users');var t=document.getElementById('users');t.innerHTML='';" +
-    "d.users.forEach(function(u){var tr=document.createElement('tr');" +
-    "var link=subLink(u.id);" +
-    "var ops=u.owner?'<span class=muted>站长</span>':" +
-    "('<button onclick=\"toggle(\\''+u.id+'\\','+(u.enabled?'false':'true')+')\">'+(u.enabled?'停用':'启用')+'</button> '+" +
-    "'<button class=danger onclick=\"del(\\''+u.id+'\\')\">删除</button>');" +
-    "tr.innerHTML='<td>'+esc(u.name)+'</td>'+" +
-    "'<td><code>'+u.id+'</code><br><a href=\"'+link+'\" target=_blank>'+link+'</a></td>'+" +
-    "'<td>'+(u.enabled?'✅':'⛔')+'</td>'+'<td>'+ops+'</td>';t.appendChild(tr)})}" +
-    "async function addUser(){var n=document.getElementById('newName').value||'用户';" +
-    "await api('/users',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:n})});" +
-    "document.getElementById('newName').value='';loadUsers()}" +
-    "async function del(id){if(!confirm('确认删除该用户？其订阅将立即失效。'))return;" +
-    "await api('/users/'+id,{method:'DELETE'});loadUsers()}" +
+    "d.users.forEach(function(u){var tr=document.createElement('tr');var link=subLink(u.id);" +
+    "var act='<button onclick=\"copy(\\''+link+'\\')\">复制</button>'+" +
+    "'<button onclick=\"location.href=clashImport(\\''+u.id+'\\',\\''+esc(u.name)+'\\')\">导入Clash</button>';" +
+    "if(!u.owner){act+='<button onclick=\"toggle(\\''+u.id+'\\','+(u.enabled?'false':'true')+')\">'+(u.enabled?'停用':'启用')+'</button>'+" +
+    "'<button class=danger onclick=\"del(\\''+u.id+'\\')\">删除</button>'}" +
+    "var badge=u.owner?' <span class=tag>站长</span>':(u.enabled?'':' <span class=muted>(已停用)</span>');" +
+    "tr.innerHTML='<td>'+esc(u.name)+badge+'</td>'+'<td><code>'+link+'</code></td>'+'<td>'+act+'</td>';t.appendChild(tr)})}" +
+    "async function addUser(){var i=document.getElementById('newName');var n=i.value.trim()||'用户';" +
+    "await api('/users',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:n})});i.value='';loadUsers()}" +
+    "document.addEventListener('keydown',function(e){if(e.key==='Enter'&&document.activeElement&&document.activeElement.id==='newName')addUser()});" +
+    "async function del(id){if(!confirm('确认删除该用户？其订阅将立即失效。'))return;await api('/users/'+id,{method:'DELETE'});loadUsers()}" +
     "async function toggle(id,en){await api('/users/'+id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:en==='true'})});loadUsers()}" +
-    "async function loadSettings(){var d=await api('/settings');var s=d.settings;" +
-    "document.getElementById('subName').value=s.subName||'';" +
-    "document.getElementById('proxyIP').value=s.proxyIP||'';" +
+    "var saveTimer=null;function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveSettings,600)}" +
+    "async function loadSettings(){var d=await api('/settings');var s=d.settings;SUBNAME=s.subName||'Agora';" +
+    "document.getElementById('subName').value=s.subName||'';document.getElementById('proxyIP').value=s.proxyIP||'';" +
     "document.getElementById('preferred').value=(s.preferred||[]).map(function(p){return p.addr+'#'+(p.note||p.addr)}).join(',')}" +
     "async function saveSettings(){var pref=document.getElementById('preferred').value.split(',').map(function(x){x=x.trim();if(!x)return null;var a=x.split('#');return{addr:a[0].trim(),note:(a[1]||a[0]).trim()}}).filter(Boolean);" +
     "var body={subName:document.getElementById('subName').value,proxyIP:document.getElementById('proxyIP').value,preferred:pref};" +
-    "await api('/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});" +
-    "document.getElementById('msg').textContent='已保存 ✓';setTimeout(function(){document.getElementById('msg').textContent=''},2000)}" +
-    "loadUsers();loadSettings();" +
+    "var d=await api('/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});" +
+    "SUBNAME=(d.settings&&d.settings.subName)||SUBNAME;toast('已自动保存 ✓')}" +
+    "loadSettings().then(loadUsers);" +
     "</script></body></html>"
   );
 }

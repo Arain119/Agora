@@ -7,13 +7,14 @@ compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "."
 
-# 环境变量：生产环境请在 Pages 控制台 Settings → Variables 里配置，
-# 切勿把真实 UUID / ADMIN_TOKEN 提交进仓库。以下仅为本地 `wrangler pages dev` 占位示例。
+# 环境变量都是可选的，默认全自动：
+#   · 不设 UUID      → 首次运行自动生成站长 UUID 并存入 KV
+#   · 不设 ADMIN_TOKEN → 打开站点用「首次设置」一键生成管理口令（TOFU）
+# 切勿在此处写死 UUID / ADMIN_TOKEN —— wrangler.toml 的 [vars] 会被原样部署成生产值，
+# 等于公开了你的口令。需要固定值时请在 Pages 控制台 Settings → Variables（Secret）里配置。
 [vars]
-UUID = "00000000-0000-0000-0000-000000000000"
-ADMIN_TOKEN = "change-me-to-a-long-random-string"
-PROXYIP = ""
 SUB_NAME = "Agora"
+# PROXYIP = ""
 # PREFERRED = "104.16.0.0#CF1,time.is#CF2"
 
 # KV 绑定：启用自适应多用户/设置管理（默认功能）。

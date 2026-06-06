@@ -2,7 +2,12 @@
 
 把朋友发给你的**订阅链接**导入支持 Clash 的客户端即可。
 
-> 本订阅基于 Clash Meta（mihomo）内核，请使用 **Meta 内核**的客户端，普通老版 Clash 可能不支持 VLESS。
+> 一条订阅链接通吃所有客户端：服务端会按你客户端的 User-Agent 自动返回合适的格式
+> （Clash → YAML，sing-box → JSON，v2rayN/Shadowrocket 等 → base64），无需手动加参数。
+> 也可显式指定：`?target=clash` / `?target=singbox` / `?target=v2ray`。
+
+> Clash 侧请使用 **Meta 内核**的客户端（见下表），普通老版 Clash 可能不支持 VLESS。
+> 在电脑上，若管理员给了你「导入 Clash」按钮/链接（`clash://install-config?...`），点一下即可自动导入。
 
 ---
 

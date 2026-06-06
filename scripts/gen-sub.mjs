@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { buildClashYaml, buildBase64Sub, CLASH_TEMPLATE } from "../src/sub.mjs";
+import { buildClashYaml, buildBase64Sub, buildSingboxJson, CLASH_TEMPLATE } from "../src/sub.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -54,11 +54,21 @@ try {
   }
 }
 
+// 守卫 3：sing-box JSON 可解析且结构正确
+const singbox = buildSingboxJson(opts);
+const sb = JSON.parse(singbox); // 抛错即失败
+if (!Array.isArray(sb.outbounds) || !sb.outbounds.some((o) => o.type === "vless")) {
+  console.error("✗ sing-box 配置缺少 vless 出站");
+  process.exit(1);
+}
+console.log("✓ sing-box JSON 解析通过");
+
 // 写出
 mkdirSync(join(root, "out"), { recursive: true });
 writeFileSync(join(root, "out/clash.yaml"), clashYaml);
 writeFileSync(join(root, "out/v2ray.txt"), v2ray);
-console.log("✓ 已写出 out/clash.yaml 与 out/v2ray.txt");
+writeFileSync(join(root, "out/singbox.json"), singbox);
+console.log("✓ 已写出 out/clash.yaml、out/v2ray.txt、out/singbox.json");
 
 function basicYamlSanity(text) {
   const required = ["proxies:", "proxy-groups:", "rules:", "type: vless"];

@@ -7,7 +7,8 @@
   "scripts": {
     "gen": "node scripts/gen-sub.mjs",
     "check": "node scripts/gen-sub.mjs && esbuild _worker.js --bundle --format=esm --external:cloudflare:sockets --outfile=out/_bundle.js",
-    "dev": "wrangler pages dev ."
+    "setup": "node scripts/setup.mjs",
+    "dev": "wrangler pages dev . --kv AGORA_KV"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",

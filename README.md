@@ -6,18 +6,24 @@
 ## 特性
 
 - 🆓 **全程免费**：跑在 Cloudflare 免费额度上（每天 10 万请求，自用绰绰有余）。
-- 📥 **一键导入 Clash**：内置 Clash Meta(mihomo) 订阅生成，含智能分流、广告拦截、策略组。
-- 👥 **自适应管理面板**：基于 KV 的内置面板，在线增删用户（每人独立 UUID/订阅）、改优选 IP/proxyIP，**免改代码、免重新部署**；未绑 KV 时自动降级为单用户。
+- 🤖 **近零配置**：站长 UUID、管理口令全部**自动生成**，无需手动配环境变量；打开站点一键初始化即可。
+- 📥 **一条订阅通吃**：按客户端 User-Agent 自动返回 **Clash / sing-box / 通用 base64**，无需 `?target=`。
+- 👥 **自适应管理面板**：基于 KV，在线增删用户（每人独立 UUID/订阅）、改优选 IP/proxyIP，**改动即自动保存、免重新部署**；每个用户一键「复制 / 导入 Clash」。
 - ⚡ **优选 IP**：订阅自动展开多个 Cloudflare 优选地址节点，客户端测速择优。
 - 🔁 **proxyIP 回退**：直连受限目标时自动走中转。
 - 🧩 **自包含**：核心仅 `_worker.js` + `src/sub.mjs`，逻辑清晰可控，非黑盒。
-- ✅ **离线可验证**：`npm run gen` 本地生成并校验订阅，不必先部署。
+- ✅ **离线可验证**：`npm run gen` 本地生成并校验三种订阅，不必先部署。
 
 ## 快速开始
 
-1. 把本仓库部署到 Cloudflare Pages（Git 集成），并绑定一个 KV namespace（变量名 `AGORA_KV`）。
-2. 配置环境变量 `UUID`（站长身份 + 订阅 token）与 `ADMIN_TOKEN`（管理面板令牌）。
-3. 访问 `https://<你的域名>/<ADMIN_TOKEN>` 进面板添加朋友，把各自的 `https://<你的域名>/<UUID>` 订阅发出去，导入客户端。
+```bash
+npm install && npx wrangler login && npm run setup
+```
+
+`npm run setup` 自动建并绑定 KV、部署到 Pages。然后**浏览器打开输出的网址 → 点「一键初始化」**，
+即得到管理面板链接与站长订阅链接。进面板「+ 添加」朋友、把各自订阅发出去即可。
+
+> 也支持网页控制台手动部署，全部步骤见 **[docs/DEPLOY.md](./docs/DEPLOY.md)**。
 
 详细步骤见 **[docs/DEPLOY.md](./docs/DEPLOY.md)**。
 

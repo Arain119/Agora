@@ -189,6 +189,71 @@ export function buildClashYaml(opts) {
   );
 }
 
+// 生成 sing-box JSON 配置（最小可用、跨版本兼容，不含已弃用字段）
+export function buildSingboxJson(opts) {
+  const nodes = buildNodes(opts);
+  const tags = nodes.map((n) => n.name);
+  const proxyOutbounds = nodes.map((n) => ({
+    type: "vless",
+    tag: n.name,
+    server: n.address,
+    server_port: n.port,
+    uuid: n.uuid,
+    tls: {
+      enabled: true,
+      server_name: n.host,
+      utls: { enabled: true, fingerprint: "chrome" },
+    },
+    transport: { type: "ws", path: n.path, headers: { Host: n.host } },
+  }));
+
+  const config = {
+    log: { level: "info", timestamp: true },
+    dns: {
+      servers: [
+        { tag: "remote", address: "https://1.1.1.1/dns-query", detour: "🚀 选择节点" },
+        { tag: "local", address: "223.5.5.5", detour: "direct" },
+      ],
+      final: "remote",
+      strategy: "ipv4_only",
+    },
+    inbounds: [
+      { type: "mixed", tag: "mixed-in", listen: "127.0.0.1", listen_port: 2080 },
+    ],
+    outbounds: [
+      { type: "selector", tag: "🚀 选择节点", outbounds: ["♻️ 自动选择", ...tags], default: "♻️ 自动选择" },
+      {
+        type: "urltest",
+        tag: "♻️ 自动选择",
+        outbounds: tags,
+        url: "https://www.gstatic.com/generate_204",
+        interval: "5m",
+        tolerance: 50,
+      },
+      ...proxyOutbounds,
+      { type: "direct", tag: "direct" },
+    ],
+    route: {
+      rules: [{ ip_is_private: true, outbound: "direct" }],
+      final: "🚀 选择节点",
+      auto_detect_interface: true,
+    },
+  };
+  return JSON.stringify(config, null, 2);
+}
+
+// 根据客户端 User-Agent 自动选择订阅格式
+// 返回 "clash" | "singbox" | "base64"
+export function pickFormatByUA(ua) {
+  const s = (ua || "").toLowerCase();
+  if (!s) return "clash";
+  if (/sing-?box|singbox/.test(s)) return "singbox";
+  if (/clash|mihomo|meta|stash|flclash/.test(s)) return "clash";
+  if (/v2ray|shadowrocket|quantumult|surfboard|nekobox|sing/.test(s)) return "base64";
+  // 浏览器或未知客户端：给最通用的 Clash
+  return "clash";
+}
+
 // 跨运行时的 base64 编码（Node 与 Workers 都可用）
 function base64Encode(str) {
   if (typeof btoa === "function") {
