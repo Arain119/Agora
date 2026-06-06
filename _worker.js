@@ -208,21 +208,45 @@ async function getEffectivePreferred(env, settings, ctx) {
   return fresh ? cache.addrs : DEFAULT_PREFERRED_ADDRS;
 }
 
-// 拉取优选来源 → 解析 → 连通性自检剔除失效 → 写入 KV
+// 把来源字段解析为 URL 列表（支持多源：逗号/空白/换行分隔）
+function parseSourceUrls(s) {
+  const urls = (s || "")
+    .split(/[\s,]+/)
+    .map((x) => x.trim())
+    .filter((x) => /^https?:\/\//i.test(x));
+  return urls.length ? urls : [DEFAULT_SOURCE_URL];
+}
+
+// 多源拉取 → 合并去重 → 连通性自检剔除失效 → 写入 KV
 async function refreshPreferred(env, settings) {
   try {
-    const url = (settings && settings.sourceUrl) || DEFAULT_SOURCE_URL;
-    const res = await fetch(url, { cf: { cacheTtl: 300, cacheEverything: true } });
-    if (!res.ok) return null;
-    const text = await res.text();
-    const cands = parsePreferredSource(text, PROBE_CANDIDATES * 2);
+    const urls = parseSourceUrls(settings && settings.sourceUrl);
+    let cands = [];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { cf: { cacheTtl: 300, cacheEverything: true } });
+        if (res.ok) cands = cands.concat(parsePreferredSource(await res.text(), PROBE_CANDIDATES * 2));
+      } catch {
+        // 单源失败不影响其它源
+      }
+    }
+    // 去重
+    const seen = new Set();
+    cands = cands.filter((c) => (seen.has(c.addr) ? false : (seen.add(c.addr), true)));
     if (!cands.length) return null;
+
     const alive = await filterAlive(cands, MAX_PREFERRED);
     const addrs = alive.length ? alive : cands.slice(0, MAX_PREFERRED);
     if (env.AGORA_KV) {
       await env.AGORA_KV.put(
         "auto_preferred",
-        JSON.stringify({ updated: Date.now(), addrs, source: url, checked: cands.length, alive: alive.length })
+        JSON.stringify({
+          updated: Date.now(),
+          addrs,
+          sources: urls.length,
+          checked: Math.min(cands.length, PROBE_CANDIDATES),
+          alive: alive.length,
+        })
       );
     }
     return addrs;
@@ -443,59 +467,62 @@ function adminPanelHTML(token, host) {
   return (
     '<!doctype html><html lang="zh"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-    "<title>Agora 管理面板</title><style>" +
-    "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:920px;margin:24px auto;padding:0 16px;color:#222}" +
-    "h1{font-size:20px}h2{font-size:16px;margin-top:28px;border-bottom:1px solid #eee;padding-bottom:6px}" +
-    "table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:8px;border-bottom:1px solid #f0f0f0;vertical-align:top}" +
-    "button{cursor:pointer;border:1px solid #ccc;background:#fafafa;border-radius:6px;padding:4px 9px;font-size:13px;margin-right:4px}" +
-    "button.primary{background:#2563eb;color:#fff;border-color:#2563eb}button.danger{color:#b91c1c;border-color:#f0c0c0}" +
-    "input{padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-size:14px}" +
-    ".row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}" +
-    "code{background:#f5f5f5;padding:2px 5px;border-radius:4px;font-size:12px;word-break:break-all}" +
-    ".muted{color:#888;font-size:12px}.tag{font-size:11px;color:#16a34a}</style></head><body>" +
-    "<h1>🛠️ Agora 管理面板</h1>" +
-    '<p class="muted">域名 <code>' + host + "</code> ｜ 订阅按客户端自动适配 Clash / sing-box / 通用格式</p>" +
-    "<h2>用户</h2>" +
-    '<div class="row"><input id="newName" placeholder="输入名称后回车即可添加（如 张三）">' +
-    '<button class="primary" onclick="addUser()">+ 添加</button></div>' +
-    '<table><thead><tr><th>名称</th><th>订阅链接</th><th>操作</th></tr></thead>' +
-    '<tbody id="users"></tbody></table>' +
-    "<h2>设置 <span id=\"smsg\" class=\"tag\"></span></h2>" +
-    '<p class="muted">改动即自动保存、即时对所有订阅生效，无需重新部署。</p>' +
-    '<div class="row">订阅名前缀 <input id="subName" style="width:160px" oninput="saveSoon()"></div>' +
-    '<div class="row"><label><input type="checkbox" id="autoRefresh" onchange="onAuto()"> 自动优选 IP（每 12h 定时刷新 + 连通性自检剔除失效）</label></div>' +
-    '<div class="row">优选来源 <input id="sourceUrl" style="width:460px" placeholder="留空用内置默认源" oninput="saveSoon()">' +
+    "<title>Agora</title><style>" +
+    "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:28px auto;padding:0 16px;color:#222}" +
+    "h1{font-size:20px;margin-bottom:4px}" +
+    "table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}td{padding:10px 6px;border-bottom:1px solid #f0f0f0;vertical-align:middle}" +
+    "button{cursor:pointer;border:1px solid #ccc;background:#fafafa;border-radius:6px;padding:5px 10px;font-size:13px;margin-right:6px}" +
+    "button.primary{background:#2563eb;color:#fff;border-color:#2563eb}" +
+    "input{padding:8px 10px;border:1px solid #ccc;border-radius:8px;font-size:14px}" +
+    ".row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}" +
+    ".lk{color:#2563eb;cursor:pointer;font-size:12px;margin-left:8px}.lk.danger{color:#b91c1c}" +
+    ".muted{color:#888;font-size:12px}.tag{font-size:11px;color:#16a34a}" +
+    "details{margin-top:26px;border-top:1px solid #eee;padding-top:8px}summary{cursor:pointer;color:#555;font-weight:600}" +
+    "details .row{font-size:13px}label{font-size:13px}</style></head><body>" +
+    "<h1>🛠️ Agora <span id=\"smsg\" class=\"tag\"></span></h1>" +
+    '<p class="muted">订阅按客户端自动适配 Clash / sing-box / 通用格式；优选 IP 自动维护。</p>' +
+    '<div class="row"><input id="newName" placeholder="输入好友名称，回车添加" style="flex:1">' +
+    '<button class="primary" onclick="addUser()">添加</button></div>' +
+    '<table><tbody id="users"></tbody></table>' +
+    "<details><summary>⚙️ 高级设置（一般无需改动）</summary>" +
+    '<div class="row">订阅名前缀 <input id="subName" style="width:150px" oninput="saveSoon()"></div>' +
+    '<div class="row"><label><input type="checkbox" id="autoRefresh" onchange="onAuto()"> 自动优选 IP（每 12h 刷新 + 连通性自检）</label>' +
     '<button onclick="refreshNow()">立即刷新</button></div>' +
     '<div class="row"><span id="autometa" class="muted"></span></div>' +
-    '<div class="row">手动优选 <input id="preferred" style="width:460px" placeholder="addr#备注，逗号分隔（关闭自动时生效）" oninput="saveSoon()"></div>' +
+    '<div class="row">优选来源 <input id="sourceUrl" style="width:100%;max-width:520px" placeholder="可填多个，逗号/换行分隔；留空用默认源" oninput="saveSoon()"></div>' +
+    '<div class="row">手动优选 <input id="preferred" style="width:100%;max-width:520px" placeholder="addr#备注，逗号分隔（关闭自动时生效）" oninput="saveSoon()"></div>' +
     '<div class="row">proxyIP <input id="proxyIP" style="width:280px" placeholder="可留空；仅个别站点直连失败时用作中转" oninput="saveSoon()"></div>' +
+    "</details>" +
     "<script>" +
     "var BASE=" + JSON.stringify(base) + ";var HOST=" + JSON.stringify(host) + ";var SUBNAME='Agora';" +
-    "function origin(){return location.protocol+'//'+HOST}" +
-    "function subLink(id){return origin()+'/'+id}" +
+    "function subLink(id){return location.protocol+'//'+HOST+'/'+id}" +
     "function clashImport(id,name){return 'clash://install-config?url='+encodeURIComponent(subLink(id))+'&name='+encodeURIComponent(SUBNAME+'-'+name)}" +
     "async function api(p,opt){var r=await fetch(BASE+'/api'+p,opt);return r.json()}" +
-    "function esc(s){return String(s).replace(/[&<>\"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]})}" +
-    "async function copy(t){try{await navigator.clipboard.writeText(t);toast('已复制 ✓')}catch(e){prompt('手动复制：',t)}}" +
     "function toast(m){var s=document.getElementById('smsg');s.textContent=m;setTimeout(function(){s.textContent=''},1500)}" +
+    "async function copy(t){try{await navigator.clipboard.writeText(t);toast('已复制 ✓')}catch(e){prompt('手动复制：',t)}}" +
+    "function mkBtn(txt,fn,cls){var b=document.createElement('button');b.textContent=txt;b.onclick=fn;if(cls)b.className=cls;return b}" +
+    "function mkLink(txt,fn,danger){var a=document.createElement('span');a.textContent=txt;a.className='lk'+(danger?' danger':'');a.onclick=fn;return a}" +
     "async function loadUsers(){var d=await api('/users');var t=document.getElementById('users');t.innerHTML='';" +
-    "d.users.forEach(function(u){var tr=document.createElement('tr');var link=subLink(u.id);" +
-    "var act='<button onclick=\"copy(\\''+link+'\\')\">复制</button>'+" +
-    "'<button onclick=\"location.href=clashImport(\\''+u.id+'\\',\\''+esc(u.name)+'\\')\">导入Clash</button>';" +
-    "if(!u.owner){act+='<button onclick=\"toggle(\\''+u.id+'\\','+(u.enabled?'false':'true')+')\">'+(u.enabled?'停用':'启用')+'</button>'+" +
-    "'<button class=danger onclick=\"del(\\''+u.id+'\\')\">删除</button>'}" +
-    "var badge=u.owner?' <span class=tag>站长</span>':(u.enabled?'':' <span class=muted>(已停用)</span>');" +
-    "tr.innerHTML='<td>'+esc(u.name)+badge+'</td>'+'<td><code>'+link+'</code></td>'+'<td>'+act+'</td>';t.appendChild(tr)})}" +
+    "d.users.forEach(function(u){var link=subLink(u.id);var tr=document.createElement('tr');" +
+    "var td1=document.createElement('td');td1.textContent=u.name;" +
+    "if(u.owner){var g=document.createElement('span');g.className='tag';g.textContent=' 站长';td1.appendChild(g)}" +
+    "else if(!u.enabled){var m=document.createElement('span');m.className='muted';m.textContent=' (已停用)';td1.appendChild(m)}" +
+    "var td2=document.createElement('td');td2.style.textAlign='right';" +
+    "td2.appendChild(mkBtn('复制订阅',function(){copy(link)}));" +
+    "td2.appendChild(mkBtn('导入Clash',function(){location.href=clashImport(u.id,u.name)}));" +
+    "if(!u.owner){td2.appendChild(mkLink(u.enabled?'停用':'启用',function(){toggle(u.id,!u.enabled)}));" +
+    "td2.appendChild(mkLink('删除',function(){del(u.id)},true))}" +
+    "tr.appendChild(td1);tr.appendChild(td2);t.appendChild(tr)})}" +
     "async function addUser(){var i=document.getElementById('newName');var n=i.value.trim()||'用户';" +
     "await api('/users',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:n})});i.value='';loadUsers()}" +
-    "document.addEventListener('keydown',function(e){if(e.key==='Enter'&&document.activeElement&&document.activeElement.id==='newName')addUser()});" +
-    "async function del(id){if(!confirm('确认删除该用户？其订阅将立即失效。'))return;await api('/users/'+id,{method:'DELETE'});loadUsers()}" +
-    "async function toggle(id,en){await api('/users/'+id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:en==='true'})});loadUsers()}" +
+    "document.getElementById('newName').addEventListener('keydown',function(e){if(e.key==='Enter')addUser()});" +
+    "async function del(id){if(!confirm('确认删除？该用户订阅将立即失效。'))return;await api('/users/'+id,{method:'DELETE'});loadUsers()}" +
+    "async function toggle(id,en){await api('/users/'+id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:en})});loadUsers()}" +
     "var saveTimer=null;function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveSettings,600)}" +
     "function applyAutoState(){var a=document.getElementById('autoRefresh').checked;document.getElementById('preferred').disabled=a;document.getElementById('sourceUrl').disabled=!a}" +
     "function onAuto(){applyAutoState();saveSoon()}" +
     "function renderMeta(a){var e=document.getElementById('autometa');if(!a){e.textContent='';return}var t=a.updated?new Date(a.updated).toLocaleString():'';" +
-    "e.textContent='自动优选当前 '+(a.count||0)+' 个'+(a.checked?'（探测 '+a.checked+' 个，存活 '+a.alive+'）':'')+(t?'，更新于 '+t:'')}" +
+    "e.textContent='自动优选当前 '+(a.count||0)+' 个'+(a.checked?'（探测 '+a.checked+'，存活 '+a.alive+'）':'')+(t?'，更新于 '+t:'')}" +
     "async function loadSettings(){var d=await api('/settings');var s=d.settings;SUBNAME=s.subName||'Agora';" +
     "document.getElementById('subName').value=s.subName||'';document.getElementById('proxyIP').value=s.proxyIP||'';" +
     "document.getElementById('autoRefresh').checked=!!s.autoRefresh;document.getElementById('sourceUrl').value=s.sourceUrl||'';" +
@@ -505,7 +532,7 @@ function adminPanelHTML(token, host) {
     "var body={subName:document.getElementById('subName').value,proxyIP:document.getElementById('proxyIP').value,preferred:pref," +
     "autoRefresh:document.getElementById('autoRefresh').checked,sourceUrl:document.getElementById('sourceUrl').value};" +
     "var d=await api('/settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});" +
-    "SUBNAME=(d.settings&&d.settings.subName)||SUBNAME;toast('已自动保存 ✓')}" +
+    "SUBNAME=(d.settings&&d.settings.subName)||SUBNAME;toast('已保存 ✓')}" +
     "async function refreshNow(){toast('刷新中…');var d=await api('/refresh',{method:'POST'});if(d.error){toast('刷新失败');return}toast('已更新 '+d.count+' 个优选 ✓');loadSettings()}" +
     "loadSettings().then(loadUsers);" +
     "</script></body></html>"
