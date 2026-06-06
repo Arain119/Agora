@@ -31,24 +31,40 @@
 
 ---
 
-## 2. 配置环境变量
+## 2. 创建并绑定 KV（自适应管理，默认启用）
+
+本项目默认带一个管理面板，可在线增删用户、改优选 IP/proxyIP，**免改代码、免重新部署**。
+这需要一个 KV 存储：
+
+1. 控制台 → **Workers & Pages** → **KV** → **Create a namespace**，命名如 `AGORA_KV`。
+2. 回到本 Pages 项目 → **Settings** → **Functions** → **KV namespace bindings** → **Add binding**：
+   - Variable name：`AGORA_KV`
+   - KV namespace：选刚创建的 `AGORA_KV`
+3. 保存。
+
+> 不绑定也能跑：会自动降级为「仅站长一个 UUID」的单用户模式，但管理面板不可用。
+> 推荐绑定，KV 免费额度（每天 10 万次读）对自用场景绰绰有余。
+
+## 3. 配置环境变量
 
 进入该 Pages 项目 → **Settings** → **Variables and Secrets** → 添加：
 
 | 变量名 | 必填 | 示例 | 说明 |
 | --- | --- | --- | --- |
-| `UUID` | ✅ | `11111111-2222-3333-4444-555555555555` | VLESS 用户 ID，同时是订阅 token |
-| `PROXYIP` | 否 | `8.8.8.8` 或 `proxyip.example.com:443` | 直连失败时的中转地址，提升对部分站点的连通性 |
-| `SUB_NAME` | 否 | `Agora` | 节点名前缀 |
-| `PREFERRED` | 否 | `104.16.0.0#CF1,time.is#CF2` | 自定义优选地址，逗号分隔 |
+| `UUID` | ✅ | `11111111-2222-3333-4444-555555555555` | 站长的 VLESS ID，同时是其订阅 token |
+| `ADMIN_TOKEN` | ✅ | 一个长随机串，如 `kJ8s...x2` | 管理面板访问令牌，**请用长随机串并保密** |
+| `PROXYIP` | 否 | `8.8.8.8` 或 `proxyip.example.com:443` | 直连失败时的中转地址（也可在面板里改） |
+| `SUB_NAME` | 否 | `Agora` | 节点名前缀（也可在面板里改） |
+| `PREFERRED` | 否 | `104.16.0.0#CF1,time.is#CF2` | 默认优选地址（也可在面板里改） |
 
-保存后到 **Deployments** → 对最新部署点 **Retry deployment**，让变量生效。
+保存后到 **Deployments** → 对最新部署点 **Retry deployment**，让变量与 KV 绑定生效。
 
 > `PROXYIP` 可填社区公开的 proxyIP（搜索 “cloudflare proxyip”）。不填也能用，只是少数 CF 回源受限的站点可能连不上。
+> `ADMIN_TOKEN` 出现在管理面板 URL 里，知道它的人即可管理用户，务必使用长随机串。
 
 ---
 
-## 3. 获取订阅链接
+## 4. 获取订阅链接
 
 部署完成后你会得到一个地址，如 `https://agora-xxx.pages.dev`。
 
@@ -64,7 +80,25 @@
 
 ---
 
-## 4. 本地开发与验证（可选）
+## 5. 管理面板：增删用户、改设置（默认功能）
+
+打开 `https://<你的域名>/<ADMIN_TOKEN>` 即进入管理面板，无需登录（令牌即在 URL 里）。
+
+面板能做：
+
+- **用户管理**：点「+ 添加用户」自动生成一个新 UUID，每个用户有独立订阅链接，直接复制发给对应的朋友；可「停用/启用」或「删除」（删除后其订阅与连接立即失效）。
+- **设置**：在线修改订阅名前缀、`proxyIP`、优选地址列表，保存后**立即对所有订阅生效**，无需重新部署。
+- 站长（环境变量 `UUID`）始终有效，且不能在面板里删除，避免误操作把自己锁出。
+
+> 也可用 API 脚本化管理（面板即调用这些接口）：
+> `GET /<ADMIN_TOKEN>/api/users`、`POST .../api/users {name}`、
+> `DELETE/PATCH .../api/users/<id>`、`GET/POST .../api/settings`。
+>
+> 提示：KV 是最终一致的，新增/删除用户后偶尔需几秒才全局生效。
+
+---
+
+## 6. 本地开发与验证（可选）
 
 ```bash
 npm install
@@ -72,23 +106,17 @@ npm install
 npm run gen -- your-app.pages.dev <你的UUID>
 # 打包 worker，确认无语法/导入错误
 npm run check
-# 本地起一个开发服务器（需要 wrangler 登录）
-npm run dev
+# 本地起开发服务器（含本地 KV，可试用管理面板）
+npx wrangler pages dev . --kv AGORA_KV
+# 然后访问 http://127.0.0.1:8788/<ADMIN_TOKEN>
+```
+
+本地调试时把 `UUID` / `ADMIN_TOKEN` 写进 `.dev.vars`（已在 `.gitignore` 中，不会提交）：
+
+```
+UUID=11111111-2222-3333-4444-555555555555
+ADMIN_TOKEN=secret-admin-xyz
 ```
 
 `npm run gen` 会在 `out/` 下生成 `clash.yaml` 与 `v2ray.txt`，并执行两项守卫检查：
 模板一致性、YAML 可解析性。
-
----
-
-## 5. （可选增强）自适应多用户管理
-
-给少数朋友分发时，目前最简单的做法是**共用一个 UUID**，或在代码里支持多个 UUID。
-若希望**不改代码、动态增删用户/优选 IP**，可启用 KV：
-
-1. **Workers & Pages** → **KV** → 创建一个 namespace（如 `AGORA_KV`）。
-2. 在 Pages 项目 **Settings → Functions → KV namespace bindings** 绑定，变量名 `AGORA_KV`。
-3. 后续在 `_worker.js` 中读取 `env.AGORA_KV` 来管理用户列表/优选 IP（当前版本预留了位置，
-   按需扩展；最小可用版仅用环境变量即可运行）。
-
-KV 免费额度（每天 10 万次读）对自用场景完全够用。

@@ -8,14 +8,19 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "."
 
 # 环境变量：生产环境请在 Pages 控制台 Settings → Variables 里配置，
-# 切勿把真实 UUID 提交进仓库。以下仅为本地 `wrangler pages dev` 占位示例。
+# 切勿把真实 UUID / ADMIN_TOKEN 提交进仓库。以下仅为本地 `wrangler pages dev` 占位示例。
 [vars]
 UUID = "00000000-0000-0000-0000-000000000000"
+ADMIN_TOKEN = "change-me-to-a-long-random-string"
 PROXYIP = ""
 SUB_NAME = "Agora"
 # PREFERRED = "104.16.0.0#CF1,time.is#CF2"
 
-# 可选：开启 KV 后可做多用户/自适应管理（见 docs/DEPLOY.md 增强部分）
+# KV 绑定：启用自适应多用户/设置管理（默认功能）。
+# 步骤：控制台 → Workers & Pages → KV → 新建 namespace（如 AGORA_KV）→ 复制其 id 填到下方，
+# 或在 Pages 项目 Settings → Functions → KV namespace bindings 里绑定，变量名同为 AGORA_KV。
+# 注意：下面的 id 必须替换为你自己的真实 id 才能在本地/CLI 部署时生效；
+#       若用 Pages 控制台 UI 绑定，可保持此处注释。
 # [[kv_namespaces]]
 # binding = "AGORA_KV"
 # id = "<your-kv-namespace-id>"
