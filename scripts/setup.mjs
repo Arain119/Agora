@@ -97,9 +97,39 @@ async function main() {
 
   const urlMatch = out.match(/https:\/\/[a-z0-9.-]+\.pages\.dev/i);
   const url = urlMatch ? urlMatch[0] : `https://${project}.pages.dev`;
+
+  // 5) 自动初始化（免去手动点按钮）：轮询 POST /__setup__
+  console.log("· 正在自动初始化…");
+  let cred = null,
+    already = false;
+  for (let i = 0; i < 8; i++) {
+    try {
+      const r = await fetch(url + "/__setup__", { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        cred = d;
+        break;
+      }
+      if (r.status === 409) {
+        already = true;
+        break;
+      }
+    } catch {
+      // 部署可能尚未生效，稍后重试
+    }
+    await new Promise((s) => setTimeout(s, 3000));
+  }
+
   console.log("\n✅ 部署完成！");
-  console.log("👉 打开下面网址，设置一次管理口令即可开始使用：");
-  console.log("   " + url + "/");
+  if (cred) {
+    console.log("请立即收藏以下两条凭证（含口令 · 仅显示一次 · 切勿外泄）：\n");
+    console.log("  管理面板：" + url + cred.adminUrl);
+    console.log("  站长订阅：" + url + "/" + cred.ownerUuid);
+  } else if (already) {
+    console.log("该部署此前已初始化（管理口令在首次部署时已显示，请使用当时保存的链接）。");
+  } else {
+    console.log("自动初始化未完成（部署或网络延迟）。请打开 " + url + "/ 点一下「初始化」按钮。");
+  }
 }
 
 main().catch((e) => {

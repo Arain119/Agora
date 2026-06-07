@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agora</title>
+<link rel="stylesheet" href="__BASE__/app.css">
+</head>
+<body>
+<section id="view-console" class="screen active">
+  <div class="wrap">
+    <header class="masthead">
+      <div class="toprow">
+        <h1 class="wordmark">AG<span class="o">O</span>RA</h1>
+        <button class="gear" id="gear" title="设置" aria-label="设置">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="console-grid">
+      <div class="col-main">
+        <div class="sec-head"><h2>成员名册</h2><span class="count" id="reg-count">—</span></div>
+        <div class="add">
+          <span class="plus">+</span>
+          <input id="newName" type="text" placeholder="添加好友 · 输入名称后回车" maxlength="40" autocomplete="off">
+          <button class="btn solid sm" id="add-btn">添加</button>
+        </div>
+        <div class="register" id="register"></div>
+      </div>
+
+      <aside class="col-side">
+        <div class="sec-head"><h2>网络优选</h2></div>
+        <div id="net-body"></div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<div class="scrim" id="scrim"></div>
+
+<aside class="sheet" id="sheet" aria-label="成员订阅">
+  <div class="sheet-pad">
+    <div class="sheet-top"><span class="kicker">成员订阅</span><button class="x" aria-label="关闭">×</button></div>
+    <h3 id="sh-name">—</h3>
+    <div class="sub-meta" id="sh-meta"></div>
+    <div class="field">
+      <div class="field-label">订阅链接</div>
+      <div class="linkbox"><code id="sh-link"></code><button class="btn sm cp" id="sh-copy">复制</button></div>
+    </div>
+    <div class="field">
+      <div class="field-label">一键导入客户端</div>
+      <div class="imports" id="sh-imports"></div>
+    </div>
+    <div class="field">
+      <div class="field-label">扫码导入</div>
+      <div class="qr-wrap"><div class="qr" id="sh-qr"></div><div class="qr-note">手机扫码即可打开导入页</div></div>
+    </div>
+  </div>
+  <div class="sheet-foot" id="sh-foot"></div>
+</aside>
+
+<aside class="sheet" id="settings" aria-label="设置">
+  <div class="sheet-pad">
+    <div class="sheet-top"><span class="kicker">设置 · 即时生效</span><button class="x" aria-label="关闭">×</button></div>
+    <h3>设置</h3>
+    <div class="sub-meta">改动即自动保存，无需重新部署。</div>
+    <div class="set-row">
+      <div class="st"><div class="k">自动优选 IP</div><div class="d">定时拉取来源、TCP 自检、剔除失效节点</div></div>
+      <label class="switch"><input type="checkbox" id="set-auto"><span class="track"></span><span class="knob"></span></label>
+    </div>
+    <div class="field"><label class="field-label">订阅 / 节点名前缀</label><input class="tinput" id="set-subName" value="Agora"></div>
+    <div class="field"><label class="field-label">优选来源 URL（支持多源 · 逗号分隔）</label><input class="tinput" id="set-sourceUrl"></div>
+    <div class="field"><label class="field-label">中转 IP（直连失败时回退 · 可留空）</label><input class="tinput" id="set-proxyIP" placeholder="例如 1.2.3.4:443"></div>
+  </div>
+  <div class="sheet-foot">
+    <button class="btn solid" id="set-save">保存设置</button>
+    <button class="btn ghost" id="set-cancel">取消</button>
+  </div>
+</aside>
+
+<div id="toast"></div>
+<script>window.AGORA = { base: "__BASE__", host: "__HOST__" };</script>
+<script src="__BASE__/app.js"></script>
+</body>
+</html>

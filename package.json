@@ -6,13 +6,16 @@
   "description": "零成本 VLESS over WebSocket 代理 + Clash 订阅生成（Cloudflare Pages/Workers）",
   "scripts": {
     "gen": "node scripts/gen-sub.mjs",
-    "check": "node scripts/gen-sub.mjs && esbuild _worker.js --bundle --format=esm --external:cloudflare:sockets --outfile=out/_bundle.js",
+    "build:panel": "node scripts/build-panel.mjs",
+    "test:qr": "node scripts/test-qr.mjs",
+    "check": "node scripts/build-panel.mjs && node scripts/test-qr.mjs && node scripts/gen-sub.mjs && esbuild _worker.js --bundle --format=esm --external:cloudflare:sockets --outfile=out/_bundle.js",
     "setup": "node scripts/setup.mjs",
     "dev": "wrangler pages dev . --kv AGORA_KV"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",
     "js-yaml": "^4.2.0",
+    "jsqr": "^1.4.0",
     "wrangler": "^4.0.0"
   }
 }

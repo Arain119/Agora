@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agora</title>
+<link rel="stylesheet" href="agora.css">
+<link rel="stylesheet" href="agora-views.css">
+</head>
+<body>
+
+<!-- ===================== CONSOLE ===================== -->
+<section id="view-console" class="screen active" data-screen-label="Console">
+  <div class="wrap">
+    <header class="masthead">
+      <div class="toprow">
+        <h1 class="wordmark">AG<span class="o">O</span>RA</h1>
+        <button class="gear" id="gear" title="设置" aria-label="设置">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="console-grid">
+      <!-- main: register -->
+      <div class="col-main">
+        <div class="sec-head">
+          <h2>成员名册</h2>
+          <span class="count" id="reg-count">4 位</span>
+        </div>
+        <div class="add">
+          <span class="plus">+</span>
+          <input id="newName" type="text" placeholder="添加好友 · 输入名称后回车" maxlength="40" autocomplete="off">
+          <button class="btn solid sm" id="add-btn">添加</button>
+        </div>
+        <div class="register" id="register"></div>
+      </div>
+
+      <!-- side: network dashboard -->
+      <aside class="col-side">
+        <div class="sec-head">
+          <h2>网络优选</h2>
+        </div>
+
+        <!-- survival donut + headline -->
+        <div class="net-top">
+          <div class="donut" id="donut"></div>
+          <div class="net-stat">
+            <div class="big"><span class="n num" id="net-alive">6</span><span class="of num">/ <span id="net-checked">12</span></span></div>
+            <div class="lbl">节点存活 · 自检通过</div>
+            <div class="autopill"><span class="dot on"></span> 自动优选 · 每 12h</div>
+          </div>
+        </div>
+
+        <!-- optimization history sparkline -->
+        <div class="chart-block">
+          <div class="cc-head"><span class="cc-label">优选历史 · 近 8 次</span><span class="cc-val"><b id="spark-cur">6</b> 存活</span></div>
+          <div class="spark" id="spark"></div>
+        </div>
+
+        <!-- node latency ranked -->
+        <div class="chart-block">
+          <div class="cc-head"><span class="cc-label">节点延迟 · 按毫秒排序</span><span class="cc-val mono" id="lat-range">38–134 ms</span></div>
+          <div class="nodes" id="nodes"></div>
+        </div>
+
+        <!-- automation cycle -->
+        <div class="cycle">
+          <div class="cycle-top"><span class="cycle-k">自动优选周期</span><span class="cycle-next mono" id="cycle-next">约 11.7h 后</span></div>
+          <div class="cycle-track"><i class="cycle-fill" id="cycle-fill"></i><span class="cycle-dot" id="cycle-dot"></span></div>
+          <div class="cycle-meta"><span>上次 · <b id="cycle-last">14m</b> 前</span><span>下次自动刷新</span></div>
+        </div>
+
+        <div class="synced">
+          <span class="t">来源 · <span id="net-sources">1</span> 个 · TCP 自检通过</span>
+          <button class="btn ghost sm" id="btn-refresh">立即优选</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SETUP ===================== -->
+<section id="view-setup" class="screen" data-screen-label="Initialize">
+  <div class="wrap">
+    <div class="setup-hero">
+      <span class="kicker">零成本 · 自托管 · Cloudflare</span>
+      <h1 class="wordmark" style="margin-top:14px;">AG<span class="o">O</span>RA</h1>
+    </div>
+
+    <div id="setup-pre">
+      <p class="setup-lead">一次性初始化。点击后自动生成<b>高熵管理口令</b>与<b>站长订阅</b>，面板随即启用 —— 无需服务器、无需配置。</p>
+      <button class="btn accent" id="setup-btn" style="font-size:16px;padding:15px 28px;">初始化并启用面板 →</button>
+    </div>
+
+    <div id="setup-done" style="display:none;">
+      <p class="setup-lead">已启用。请<b>立即收藏</b>下面两条凭证 —— 本页随后不再可用。</p>
+      <div class="cred">
+        <div class="ch"><span class="t">凭证 · 仅显示一次</span><span class="seal">✦ AGORA</span></div>
+        <div class="cbody">
+          <div class="cred-item">
+            <div class="field-label">管理面板（含口令 · 切勿外泄）</div>
+            <div class="linkbox"><code id="cred-admin"></code><button class="btn sm cp" id="cred-admin-cp">复制</button></div>
+          </div>
+          <div class="cred-item">
+            <div class="field-label">站长订阅链接</div>
+            <div class="linkbox"><code id="cred-owner"></code><button class="btn sm cp" id="cred-owner-cp">复制</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="warnbar">
+        <span style="color:var(--warn);font-weight:900;">!</span>
+        <span><b>口令即权限。</b>任何持有管理链接的人都能管理你的全部成员。请存入密码管理器，不要分享、不要截图外传。</span>
+      </div>
+      <button class="btn solid mt24" id="enter-console" style="font-size:15px;padding:14px 26px;">进入管理面板 →</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FRIEND IMPORT ===================== -->
+<section id="view-friend" class="screen" data-screen-label="Friend import">
+  <div class="wrap">
+    <div class="friend-kicker">
+      <span class="dot on"></span>
+      <span class="kicker">你被加入了一个 Agora</span>
+    </div>
+    <h1 class="friend-h">欢迎，<em>Mira</em>。</h1>
+    <p class="friend-lead">一条链接，通吃所有客户端。导入后即可使用 —— 服务端会按你的客户端自动返回合适的格式。</p>
+
+    <div class="imports" style="grid-template-columns:repeat(2,1fr);">
+      <div class="import-card fr-import" data-app="Clash"><span class="ic-name">Clash / Mihomo</span><span class="ic-fmt">YAML · 一键导入</span></div>
+      <div class="import-card fr-import" data-app="sing-box"><span class="ic-name">sing-box</span><span class="ic-fmt">JSON</span></div>
+      <div class="import-card fr-import" data-app="v2rayN"><span class="ic-name">v2rayN / NG</span><span class="ic-fmt">Base64 · 点击复制</span></div>
+      <div class="import-card fr-import" data-app="Shadowrocket"><span class="ic-name">Shadowrocket</span><span class="ic-fmt">通用</span></div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">你的订阅链接</div>
+      <div class="linkbox"><code id="fr-link">https://agora.pages.dev/f29b0c14-5d8e-4a76-9b31-2c7e6f1a0d54</code><button class="btn sm cp" id="fr-copy">复制</button></div>
+    </div>
+
+    <div class="qr-wrap">
+      <div class="qr"><canvas id="fr-qr"></canvas></div>
+      <div class="qr-note">手机端扫码<br>直接导入订阅。<br><span style="color:var(--muted)">链接长期有效，自动更新节点。</span></div>
+    </div>
+
+    <h2 class="friend-h2">三步开始</h2>
+    <div class="steps">
+      <div class="step"><div class="stx"><b>安装客户端</b><div class="d">Clash / sing-box / Shadowrocket 任选其一</div></div></div>
+      <div class="step"><div class="stx"><b>导入上面的链接</b><div class="d">点对应按钮，或在客户端里粘贴订阅地址</div></div></div>
+      <div class="step"><div class="stx"><b>选择节点，连接</b><div class="d">节点列表由站长自动优选，保持最新</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== MEMBER SHEET ===================== -->
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" aria-label="成员详情">
+  <div class="sheet-pad">
+    <div class="sheet-top">
+      <span class="kicker">成员订阅</span>
+      <button class="x" aria-label="关闭">×</button>
+    </div>
+    <h3 id="sh-name">Mira</h3>
+    <div class="sub-meta" id="sh-meta"></div>
+
+    <div class="field">
+      <div class="field-label">订阅链接</div>
+      <div class="linkbox"><code id="sh-link"></code><button class="btn sm cp" id="sh-copy">复制</button></div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">一键导入客户端</div>
+      <div class="imports">
+        <div class="import-card" data-app="Clash"><span class="ic-name">Clash</span><span class="ic-fmt">clash:// · YAML</span></div>
+        <div class="import-card" data-app="sing-box"><span class="ic-name">sing-box</span><span class="ic-fmt">JSON</span></div>
+        <div class="import-card" data-app="v2rayN"><span class="ic-name">v2rayN</span><span class="ic-fmt">Base64</span></div>
+        <div class="import-card" data-app="通用"><span class="ic-name">通用 / 其它</span><span class="ic-fmt">auto · UA 适配</span></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">扫码导入</div>
+      <div class="qr-wrap">
+        <div class="qr"><canvas id="sh-qr"></canvas></div>
+        <div class="qr-note">用手机客户端<br>扫码添加订阅。</div>
+      </div>
+    </div>
+  </div>
+  <div class="sheet-foot" id="sh-foot"></div>
+</aside>
+
+<!-- ===================== SETTINGS SHEET ===================== -->
+<aside class="sheet" id="settings" aria-label="设置">
+  <div class="sheet-pad">
+    <div class="sheet-top">
+      <span class="kicker">设置 · 即时生效</span>
+      <button class="x" aria-label="关闭">×</button>
+    </div>
+    <h3>设置</h3>
+    <div class="sub-meta">改动即自动保存，无需重新部署。</div>
+
+    <div class="set-row">
+      <div class="st">
+        <div class="k">自动优选 IP</div>
+        <div class="d">定时拉取来源、TCP 自检、剔除失效节点</div>
+      </div>
+      <label class="switch"><input type="checkbox" id="set-auto"><span class="track"></span><span class="knob"></span></label>
+    </div>
+
+    <div class="field">
+      <label class="field-label">订阅 / 节点名前缀</label>
+      <input class="tinput" id="set-subName" value="Agora">
+    </div>
+
+    <div class="field">
+      <label class="field-label">优选来源 URL（支持多源 · 逗号分隔）</label>
+      <input class="tinput" id="set-sourceUrl">
+    </div>
+
+    <div class="field">
+      <label class="field-label">中转 IP（直连失败时回退 · 可留空）</label>
+      <input class="tinput" id="set-proxyIP" placeholder="例如 1.2.3.4:443">
+    </div>
+  </div>
+  <div class="sheet-foot">
+    <button class="btn solid" id="set-save">保存设置</button>
+    <button class="btn ghost" id="set-cancel">取消</button>
+  </div>
+</aside>
+
+<!-- toast + prototype nav -->
+<div id="toast"></div>
+<nav id="protonav">
+  <button data-v="console" class="on">面板</button>
+  <button data-v="setup">初始化</button>
+  <button data-v="friend">好友视图</button>
+</nav>
+
+<script>
+window.__AGORA_TWEAKS = /*EDITMODE-BEGIN*/{
+  "accent": "vermillion",
+  "paper": "cream",
+  "density": "comfortable"
+}/*EDITMODE-END*/;
+</script>
+<script src="agora.js"></script>
+<script src="tweaks.js"></script>
+</body>
+</html>
