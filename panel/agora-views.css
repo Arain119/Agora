@@ -236,6 +236,7 @@
 .qr-wrap { display: flex; gap: 18px; align-items: center; margin-top: 12px; }
 .qr { width: 116px; height: 116px; flex: none; background: #fff; padding: 9px; border: 1.5px solid var(--ink); border-radius: var(--r); }
 .qr canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+.qr svg, .qr img { width: 100%; height: 100%; display: block; }
 .qr-wrap .qr-note { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); line-height: 1.6; }
 
 .sheet-foot { margin-top: auto; padding: 22px clamp(26px,4vw,44px); border-top: 1px solid var(--line); display: flex; gap: 10px; }

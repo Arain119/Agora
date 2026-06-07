@@ -28,6 +28,7 @@ import {
   DEFAULT_PREFERRED_ADDRS,
 } from "./src/sub.mjs";
 import { PANEL_CSS, PANEL_JS, adminPanelHTML, setupPageHTML, friendPageHTML } from "./src/panel.mjs";
+import { qrSVG } from "./src/qr.mjs";
 
 // 优选 IP 自动刷新参数
 const PREFERRED_TTL_MS = 12 * 60 * 60 * 1000; // 缓存 12 小时
@@ -379,6 +380,14 @@ async function handleAdmin(rest, request, env, host, adminToken) {
   if (rest[0] === "app.js") {
     return new Response(PANEL_JS, {
       headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600" },
+    });
+  }
+  // 二维码（管理员侧成员抽屉扫码导入）
+  if (rest[0] === "qr") {
+    const text = new URL(request.url).searchParams.get("text") || "";
+    if (!text || text.length > 512) return new Response("bad request", { status: 400 });
+    return new Response(qrSVG(text), {
+      headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" },
     });
   }
   if (rest[0] === "api") {

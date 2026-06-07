@@ -194,6 +194,7 @@
     imp.appendChild(importCard('sing-box', 'JSON', function () { location.href = singboxLink(m.id); }));
     imp.appendChild(importCard('v2rayN', 'Base64', function () { copy(subLink(m.id) + '?target=base64', '\u901a\u7528\u8ba2\u9605\u5df2\u590d\u5236'); }));
     imp.appendChild(importCard('\u901a\u7528 / \u5176\u5b83', 'auto \u00b7 UA \u9002\u914d', function () { copy(subLink(m.id), '\u8ba2\u9605\u94fe\u63a5\u5df2\u590d\u5236'); }));
+    var qr = $('#sh-qr'); if (qr) { var img = el('img'); img.alt = 'QR'; img.src = BASE + '/qr?text=' + encodeURIComponent(subLink(m.id)); qr.innerHTML = ''; qr.appendChild(img); }
     var foot = $('#sh-foot'); foot.innerHTML = '';
     if (m.owner) {
       var p = el('div', 'kicker', '\u7ad9\u957f\u8d26\u53f7\u53d7\u4fdd\u62a4 \u00b7 \u4e0d\u53ef\u505c\u7528\u6216\u79fb\u9664'); p.style.padding = '6px 0'; foot.appendChild(p);
