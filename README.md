@@ -34,6 +34,17 @@ npm install && npx wrangler login && npm run setup
 
 ---
 
+## 🖼 界面一览
+
+<p align="center"><img src="assets/console.jpg" width="760" alt="Agora 管理控制台 — 成员名册 + 网络优选仪表盘"></p>
+<p align="center">
+  <img src="assets/member.jpg" width="380" alt="成员订阅 · 一键导入 + 扫码">
+  <img src="assets/friend.jpg" width="372" alt="好友导入页">
+</p>
+<p align="center"><sub>左：Editorial 控制台（成员名册 + 实时网络优选仪表盘）· 中：成员订阅抽屉（多客户端一键导入 + 可扫二维码）· 右：好友导入页</sub></p>
+
+---
+
 ## ✨ 特性
 
 - 🆓 **全程免费**：Cloudflare 免费额度（每天 10 万请求，自用绰绰有余），无需服务器/信用卡。
